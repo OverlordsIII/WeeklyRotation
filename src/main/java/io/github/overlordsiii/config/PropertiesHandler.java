@@ -185,6 +185,11 @@ public class PropertiesHandler {
 			return this;
 		}
 
+		public Builder addConfigOption(String key, Object defaultValue) {
+			configValues.put(key, defaultValue.toString());
+			return this;
+		}
+
 		public Builder setFileName(String fileName) {
 			if (!fileName.endsWith(".properties")) {
 				fileName += ".properties";
