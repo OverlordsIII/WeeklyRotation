@@ -1,0 +1,7 @@
+/build
+/.idea
+/.gradle
+
+/src/main/resources/ilse-bot.properties
+/src/main/resources/token.properties
+/src/main/resources/servers/*
