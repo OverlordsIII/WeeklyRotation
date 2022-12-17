@@ -1,5 +1,10 @@
 package io.github.overlordsiii;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import io.github.overlordsiii.config.PropertiesHandler;
 import org.apache.hc.core5.http.ParseException;
 import org.slf4j.Logger;
@@ -13,6 +18,7 @@ import se.michaelthelin.spotify.model_objects.credentials.AuthorizationCodeCrede
 import se.michaelthelin.spotify.model_objects.specification.Artist;
 import se.michaelthelin.spotify.model_objects.specification.Playlist;
 import se.michaelthelin.spotify.model_objects.specification.PlaylistSimplified;
+import se.michaelthelin.spotify.model_objects.specification.PlaylistTrack;
 import se.michaelthelin.spotify.model_objects.specification.SavedTrack;
 import se.michaelthelin.spotify.model_objects.specification.Track;
 import se.michaelthelin.spotify.model_objects.specification.User;
@@ -123,8 +129,21 @@ public class Main {
         }
 
         if (playlistId != null) {
-            API.replacePlaylistsItems(playlistId, new String[]{}).build().execute();
+            LOGGER.info("Playlist already created... Deleting previous tracks");
+            JsonArray array = new JsonArray();
+
+            for (PlaylistTrack item : API.getPlaylist(playlistId).build().execute().getTracks().getItems()) {
+                String id = item.getTrack().getId();
+
+                JsonObject object = new JsonObject();
+                object.addProperty("uri", "spotify:track:" + id);
+                array.add(object);
+            }
+
+
+            API.removeItemsFromPlaylist(playlistId, array).build().execute();
         } else {
+            LOGGER.info("Playlist not present... Creating now");
             playlistId = API.createPlaylist(CURRENT_USER.getId(), weeklyRotationName + " Weekly Rotation")
                 .description(getPlaylistDescription())
                 .public_(GENERAL_CONFIG.getConfigOption("weekly-rotation-playlist-public", Boolean::parseBoolean))
@@ -140,7 +159,7 @@ public class Main {
 
         API.addItemsToPlaylist(playlistId, uris).build().execute();
 
-
+        LOGGER.info("https://open.spotify.com/playlist/" + playlistId);
     }
 
     public static String getPlaylistDescription() {
