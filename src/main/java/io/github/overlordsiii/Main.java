@@ -16,9 +16,11 @@ import se.michaelthelin.spotify.enums.ReleaseDatePrecision;
 import se.michaelthelin.spotify.exceptions.SpotifyWebApiException;
 import se.michaelthelin.spotify.model_objects.credentials.AuthorizationCodeCredentials;
 import se.michaelthelin.spotify.model_objects.specification.Artist;
+import se.michaelthelin.spotify.model_objects.specification.ArtistSimplified;
 import se.michaelthelin.spotify.model_objects.specification.Playlist;
 import se.michaelthelin.spotify.model_objects.specification.PlaylistSimplified;
 import se.michaelthelin.spotify.model_objects.specification.PlaylistTrack;
+import se.michaelthelin.spotify.model_objects.specification.SavedAlbum;
 import se.michaelthelin.spotify.model_objects.specification.SavedTrack;
 import se.michaelthelin.spotify.model_objects.specification.Track;
 import se.michaelthelin.spotify.model_objects.specification.User;
@@ -32,7 +34,10 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.Random;
+import java.util.Scanner;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class Main {
@@ -105,6 +110,116 @@ public class Main {
 
         LOGGER.info(CURRENT_USER.getId());
 
+        Scanner scanner = new Scanner(System.in);
+
+        LOGGER.info("Input 1 for Weekly Rotation, 2 for Liked Songs playlist, 3 to set player to random album");
+
+        int input = scanner.nextInt();
+
+        switch (input) {
+            case 1 -> executeWeeklyRotation();
+            case 2 -> {
+                LOGGER.info("Input artist name");
+                String name = scanner.next();
+                createPlaylistForArtist(name);
+            }
+            case 3 -> setPlayerToRandomAlbum();
+            default -> LOGGER.error("Incorrect Input!");
+        }
+    }
+
+    private static void setPlayerToRandomAlbum() throws IOException, ParseException, SpotifyWebApiException {
+        List<SavedAlbum> savedAlbums = getSavedAlbums();
+
+        Random random = new Random();
+
+        SavedAlbum randomAlbum = savedAlbums.get(random.nextInt(savedAlbums.size()));
+
+
+        List<String> tracks = Arrays.stream(randomAlbum.getAlbum().getTracks().getItems())
+            .map(trackSimplified -> "spotify:track:" + trackSimplified.getId())
+            .toList();
+
+        for (String s : tracks) {
+            API.addItemToUsersPlaybackQueue(s).build().execute();
+        }
+
+        LOGGER.info(randomAlbum.getAlbum().getName() + " - " + toString(randomAlbum.getAlbum().getArtists(), ArtistSimplified::getName) + " added to queue");
+
+
+    }
+
+    public static void createPlaylistForArtist(String artist) throws IOException, ParseException, SpotifyWebApiException {
+        List<PlaylistSimplified> playlists = getUserPlaylists();
+
+        String playlistId = null;
+
+        for (PlaylistSimplified playlist : getUserPlaylists()) {
+            if (playlist.getName().contains(artist + " Bangers")) {
+                playlistId = playlist.getId();
+            }
+        }
+
+        if (playlistId != null) {
+            LOGGER.info(artist + " Bangers playlist already present, deleting songs in old playlist...");
+
+            deleteAllSongsInPlaylist(playlistId);
+        } else {
+            LOGGER.info("Playlist not present... Creating now");
+            playlistId = API.createPlaylist(CURRENT_USER.getId(), artist + " Bangers")
+                .description("Bangers by " + artist)
+                .public_(GENERAL_CONFIG.getConfigOption("weekly-rotation-playlist-public", Boolean::parseBoolean))
+                .build()
+                .execute()
+                .getId();
+        }
+
+        List<String> uris = getTracksWithArtist(artist)
+            .stream()
+            .map(savedTrack -> "spotify:track:" + savedTrack.getTrack().getId())
+            .toList();
+
+        List<List<String>> lists = subListX(uris, 50);
+
+        for (List<String> strings : lists) {
+            String[] uri = strings.toArray(String[]::new);
+            API.addItemsToPlaylist(playlistId, uri).build().execute();
+        }
+
+        LOGGER.info("https://open.spotify.com/playlist/" + playlistId);
+
+    }
+
+    private static List<SavedTrack> getTracksWithArtist(String artist) throws IOException, ParseException, SpotifyWebApiException {
+        List<SavedTrack> likedSongs = getSavedTracks();
+
+        List<SavedTrack> artistSongs = new ArrayList<>();
+
+        likedSongs.forEach(savedTrack -> {
+            String artists = toString(savedTrack.getTrack().getArtists(), ArtistSimplified::getName);
+            if (artists.contains(artist)) {
+                artistSongs.add(savedTrack);
+            }
+        });
+
+        return artistSongs;
+    }
+
+    private static <T> String toString(T[] array, Function<T, String> function) {
+        StringBuilder builder = new StringBuilder("By ");
+        for (int i = 0; i < array.length; i++) {
+            T t = array[i];
+            builder.append(function.apply(t));
+
+            if (i + 1 != array.length) {
+                builder.append(", ");
+            }
+        }
+
+        return builder.toString();
+    }
+
+    public static void executeWeeklyRotation() throws IOException, ParseException, SpotifyWebApiException {
         List<SavedTrack> savedTracks = getSavedTracks();
 
         List<SavedTrack> recentTracks = getTracksWithinLastXMonths(savedTracks, GENERAL_CONFIG.getConfigOption("recent-album-month-limit", Integer::parseInt));
@@ -129,19 +244,8 @@ public class Main {
         }
 
         if (playlistId != null) {
-            LOGGER.info("Playlist already created... Deleting previous tracks");
-            JsonArray array = new JsonArray();
-
-            for (PlaylistTrack item : API.getPlaylist(playlistId).build().execute().getTracks().getItems()) {
-                String id = item.getTrack().getId();
-
-                JsonObject object = new JsonObject();
-                object.addProperty("uri", "spotify:track:" + id);
-                array.add(object);
-            }
-
-
-            API.removeItemsFromPlaylist(playlistId, array).build().execute();
+            LOGGER.info("Weekly Rotation Playlist already created... Deleting previous tracks");
+            deleteAllSongsInPlaylist(playlistId);
         } else {
             LOGGER.info("Playlist not present... Creating now");
             playlistId = API.createPlaylist(CURRENT_USER.getId(), weeklyRotationName + " Weekly Rotation")
@@ -160,6 +264,21 @@ public class Main {
         API.addItemsToPlaylist(playlistId, uris).build().execute();
 
         LOGGER.info("https://open.spotify.com/playlist/" + playlistId);
+    }
+
+    private static void deleteAllSongsInPlaylist(String playlistId) throws IOException, ParseException, SpotifyWebApiException {
+        JsonArray array = new JsonArray();
+
+        for (PlaylistTrack item : API.getPlaylist(playlistId).build().execute().getTracks().getItems()) {
+            String id = item.getTrack().getId();
+
+            JsonObject object = new JsonObject();
+            object.addProperty("uri", "spotify:track:" + id);
+            array.add(object);
+        }
+
+
+        API.removeItemsFromPlaylist(playlistId, array).build().execute();
     }
 
     public static String getPlaylistDescription() {
@@ -261,6 +380,39 @@ public class Main {
         }
 
         return playlists;
+    }
+
+    public static List<SavedAlbum> getSavedAlbums() throws IOException, ParseException, SpotifyWebApiException {
+        int totalLikedAlbums = API.getUsersSavedTracks().build().execute().getTotal();
+
+        List<SavedAlbum> albums = new ArrayList<>();
+
+        for (int i = 0; i < totalLikedAlbums; i += 50) {
+            albums.addAll(Arrays.asList(API
+                .getCurrentUsersSavedAlbums()
+                .limit(50)
+                .offset(i)
+                .build()
+                .execute()
+                .getItems()));
+        }
+
+        return albums;
+    }
+
+    // creates lists from a master list with size x
+    public static <T> List<List<T>> subListX(List<T> list, int x) {
+        List<List<T>> returnList = new ArrayList<>();
+
+        for (int i = 0; i < list.size(); i += x) {
+            int toIndex = i + x;
+            if (toIndex > list.size() - 1) {
+                toIndex = list.size() - 1;
+            }
+            returnList.add(list.subList(i, toIndex));
+        }
+
+        return returnList;
     }
 
 }
