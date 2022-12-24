@@ -114,13 +114,13 @@ public class Main {
 
         LOGGER.info("Input 1 for Weekly Rotation, 2 for Liked Songs playlist, 3 to set player to random album");
 
-        int input = scanner.nextInt();
+        int input = Integer.parseInt(scanner.nextLine());
 
         switch (input) {
             case 1 -> executeWeeklyRotation();
             case 2 -> {
                 LOGGER.info("Input artist name");
-                String name = scanner.next();
+                String name = scanner.nextLine();
                 createPlaylistForArtist(name);
             }
             case 3 -> setPlayerToRandomAlbum();
@@ -167,7 +167,6 @@ public class Main {
         } else {
             LOGGER.info("Playlist not present... Creating now");
             playlistId = API.createPlaylist(CURRENT_USER.getId(), artist + " Bangers")
-                .description("Bangers by " + artist)
                 .public_(GENERAL_CONFIG.getConfigOption("weekly-rotation-playlist-public", Boolean::parseBoolean))
                 .build()
                 .execute()
