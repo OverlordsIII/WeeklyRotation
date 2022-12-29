@@ -33,7 +33,13 @@ import java.net.URI;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
 import java.util.Scanner;
@@ -112,7 +118,7 @@ public class Main {
 
         Scanner scanner = new Scanner(System.in);
 
-        LOGGER.info("Input 1 for Weekly Rotation, 2 for Liked Songs playlist, 3 to set player to random album");
+        LOGGER.info("Input 1 for Weekly Rotation, 2 for Liked Songs playlist, 3 to set player to random album, 4 to get Liked Songs Statistics");
 
         int input = Integer.parseInt(scanner.nextLine());
 
@@ -124,8 +130,47 @@ public class Main {
                 createPlaylistForArtist(name);
             }
             case 3 -> setPlayerToRandomAlbum();
+            case 4 -> outputLikedSongsData();
             default -> LOGGER.error("Incorrect Input!");
         }
+    }
+
+    private static void outputLikedSongsData() throws IOException, ParseException, SpotifyWebApiException {
+        List<SavedTrack> savedSongs = getSavedTracks();
+
+        Map<ArtistSimplified, Integer> likedSongsMap = new LinkedHashMap<>();
+
+        for (SavedTrack savedTrack : savedSongs) {
+            ArtistSimplified[] artists = savedTrack.getTrack().getArtists();
+
+            for (ArtistSimplified artist : artists) {
+                if (likedSongsMap.containsKey(artist)) {
+                    likedSongsMap.replace(artist, likedSongsMap.get(artist) + 1);
+                } else {
+                    likedSongsMap.put(artist, 1);
+                }
+            }
+        }
+
+        likedSongsMap = sortArtistMap(likedSongsMap);
+
+        likedSongsMap.forEach((artistSimplified, integer) -> {
+            LOGGER.info(artistSimplified.getName() + " - " + integer + " Liked Songs");
+        });
+    }
+
+    public static Map<ArtistSimplified, Integer> sortArtistMap(Map<ArtistSimplified, Integer> map) {
+        List<Map.Entry<ArtistSimplified, Integer>> list = new LinkedList<>(map.entrySet());
+
+       list.sort(Map.Entry.comparingByValue((o1, o2) -> -Integer.compare(o1, o2)));
+
+        Map<ArtistSimplified, Integer> map2 = new LinkedHashMap<>();
+
+        for (Map.Entry<ArtistSimplified, Integer> artistSimplifiedIntegerEntry : list) {
+            map2.put(artistSimplifiedIntegerEntry.getKey(), artistSimplifiedIntegerEntry.getValue());
+        }
+
+        return map2;
     }
 
     private static void setPlayerToRandomAlbum() throws IOException, ParseException, SpotifyWebApiException {
@@ -150,8 +195,6 @@ public class Main {
     }
 
     public static void createPlaylistForArtist(String artist) throws IOException, ParseException, SpotifyWebApiException {
-        List<PlaylistSimplified> playlists = getUserPlaylists();
-
         String playlistId = null;
 
         for (PlaylistSimplified playlist : getUserPlaylists()) {
@@ -173,7 +216,9 @@ public class Main {
                 .getId();
         }
 
-        List<String> uris = getTracksWithArtist(artist)
+        List<SavedTrack> tracks = getTracksWithArtist(artist);
+
+        List<String> uris = tracks
             .stream()
             .map(savedTrack -> "spotify:track:" + savedTrack.getTrack().getId())
             .toList();
@@ -270,6 +315,10 @@ public class Main {
 
         for (PlaylistTrack item : API.getPlaylist(playlistId).build().execute().getTracks().getItems()) {
             String id = item.getTrack().getId();
+
+            if (item.getIsLocal()) {
+                continue;
+            }
 
             JsonObject object = new JsonObject();
             object.addProperty("uri", "spotify:track:" + id);
@@ -404,11 +453,7 @@ public class Main {
         List<List<T>> returnList = new ArrayList<>();
 
         for (int i = 0; i < list.size(); i += x) {
-            int toIndex = i + x;
-            if (toIndex > list.size() - 1) {
-                toIndex = list.size() - 1;
-            }
-            returnList.add(list.subList(i, toIndex));
+            returnList.add(list.subList(i, Math.min(i + x, list.size())));
         }
 
         return returnList;
