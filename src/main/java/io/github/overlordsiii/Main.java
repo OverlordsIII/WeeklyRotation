@@ -20,12 +20,16 @@ import se.michaelthelin.spotify.model_objects.specification.ArtistSimplified;
 import se.michaelthelin.spotify.model_objects.specification.Playlist;
 import se.michaelthelin.spotify.model_objects.specification.PlaylistSimplified;
 import se.michaelthelin.spotify.model_objects.specification.PlaylistTrack;
+import se.michaelthelin.spotify.model_objects.specification.Recommendations;
+import se.michaelthelin.spotify.model_objects.specification.RecommendationsSeed;
 import se.michaelthelin.spotify.model_objects.specification.SavedAlbum;
 import se.michaelthelin.spotify.model_objects.specification.SavedTrack;
 import se.michaelthelin.spotify.model_objects.specification.Track;
+import se.michaelthelin.spotify.model_objects.specification.TrackSimplified;
 import se.michaelthelin.spotify.model_objects.specification.User;
 import se.michaelthelin.spotify.requests.authorization.authorization_code.AuthorizationCodeRequest;
 import se.michaelthelin.spotify.requests.authorization.authorization_code.AuthorizationCodeUriRequest;
+import se.michaelthelin.spotify.requests.data.browse.GetRecommendationsRequest;
 import se.michaelthelin.spotify.requests.data.library.GetUsersSavedTracksRequest;
 
 import java.io.IOException;
@@ -118,7 +122,7 @@ public class Main {
 
         Scanner scanner = new Scanner(System.in);
 
-        LOGGER.info("Input 1 for Weekly Rotation, 2 for Liked Songs playlist, 3 to set player to random album, 4 to get Liked Songs Statistics");
+        LOGGER.info("Input 1 for Weekly Rotation, 2 for Liked Songs playlist, 3 to set player to random album, 4 to get Liked Songs Statistics, 5 to get top artists and tracks, 6 to put top tracks into a playlist");
 
         int input = Integer.parseInt(scanner.nextLine());
 
@@ -131,8 +135,44 @@ public class Main {
             }
             case 3 -> setPlayerToRandomAlbum();
             case 4 -> outputLikedSongsData();
+            case 5 -> outputTopArtistsAndSongs();
+            case 6 -> createTopTracksPlaylist();
             default -> LOGGER.error("Incorrect Input!");
         }
+    }
+
+    private static void createTopTracksPlaylist() throws IOException, ParseException, SpotifyWebApiException {
+        String playlistId = getAndDeleteSongsOrCreatePlaylist(API.getCurrentUsersProfile().build().execute().getDisplayName() + "'s Top Songs");
+
+        List<String> uris = getUserTopTracks()
+            .stream()
+            .map(track -> "spotify:track:" + track.getId())
+            .toList();
+
+        addTracksToPlaylist(playlistId, uris);
+    }
+
+    private static void addTracksToPlaylist(String playlistId, List<String> uris) throws IOException, SpotifyWebApiException, ParseException {
+        List<List<String>> moreUris = subListX(uris, 50);
+
+        for (List<String> strings : moreUris) {
+            String[] uri = strings.toArray(String[]::new);
+            API.addItemsToPlaylist(playlistId, uri).build().execute();
+        }
+
+        LOGGER.info("https://open.spotify.com/playlist/" + playlistId);
+    }
+
+    private static void outputTopArtistsAndSongs() throws IOException, ParseException, SpotifyWebApiException {
+        LOGGER.info("Top Artists");
+        getUserTopArtists().forEach(artist -> {
+            LOGGER.info(artist.getName());
+        });
+
+        LOGGER.info("Top Tracks");
+        getUserTopTracks().forEach(track -> {
+            LOGGER.info(track.getName() + " - " + toString(track.getArtists(), ArtistSimplified::getName));
+        });
     }
 
     private static void outputLikedSongsData() throws IOException, ParseException, SpotifyWebApiException {
@@ -195,26 +235,7 @@ public class Main {
     }
 
     public static void createPlaylistForArtist(String artist) throws IOException, ParseException, SpotifyWebApiException {
-        String playlistId = null;
-
-        for (PlaylistSimplified playlist : getUserPlaylists()) {
-            if (playlist.getName().contains(artist + " Bangers")) {
-                playlistId = playlist.getId();
-            }
-        }
-
-        if (playlistId != null) {
-            LOGGER.info(artist + " Bangers playlist already present, deleting songs in old playlist...");
-
-            deleteAllSongsInPlaylist(playlistId);
-        } else {
-            LOGGER.info("Playlist not present... Creating now");
-            playlistId = API.createPlaylist(CURRENT_USER.getId(), artist + " Bangers")
-                .public_(GENERAL_CONFIG.getConfigOption("weekly-rotation-playlist-public", Boolean::parseBoolean))
-                .build()
-                .execute()
-                .getId();
-        }
+        String playlistId = getAndDeleteSongsOrCreatePlaylist(artist + " Bangers");
 
         List<SavedTrack> tracks = getTracksWithArtist(artist);
 
@@ -223,15 +244,32 @@ public class Main {
             .map(savedTrack -> "spotify:track:" + savedTrack.getTrack().getId())
             .toList();
 
-        List<List<String>> lists = subListX(uris, 50);
+        addTracksToPlaylist(playlistId, uris);
+    }
 
-        for (List<String> strings : lists) {
-            String[] uri = strings.toArray(String[]::new);
-            API.addItemsToPlaylist(playlistId, uri).build().execute();
+    private static String getAndDeleteSongsOrCreatePlaylist(String name) throws IOException, ParseException, SpotifyWebApiException {
+        String playlistId = null;
+
+        for (PlaylistSimplified playlist : getUserPlaylists()) {
+            if (playlist.getName().contains(name)) {
+                playlistId = playlist.getId();
+            }
         }
 
-        LOGGER.info("https://open.spotify.com/playlist/" + playlistId);
+        if (playlistId != null) {
+            LOGGER.info(name + " playlist already present, deleting songs in old playlist...");
 
+            deleteAllSongsInPlaylist(playlistId);
+        } else {
+            LOGGER.info("Playlist not present... Creating now");
+            playlistId = API.createPlaylist(CURRENT_USER.getId(), name)
+                .public_(GENERAL_CONFIG.getConfigOption("weekly-rotation-playlist-public", Boolean::parseBoolean))
+                .build()
+                .execute()
+                .getId();
+        }
+
+        return playlistId;
     }
 
     private static List<SavedTrack> getTracksWithArtist(String artist) throws IOException, ParseException, SpotifyWebApiException {
@@ -276,29 +314,7 @@ public class Main {
 
         weeklyRotation.forEach(savedTrack -> LOGGER.info(savedTrack.getTrack().getName() + " - " + savedTrack.getTrack().getAlbum().getReleaseDate()));
 
-        String playlistId = null;
-
-        List<PlaylistSimplified> playlists = getUserPlaylists();
-
-
-        for (PlaylistSimplified playlist : playlists) {
-            if (playlist.getName().startsWith(getWeeklyRotationPlaylistName())) {
-                playlistId = playlist.getId();
-            }
-        }
-
-        if (playlistId != null) {
-            LOGGER.info("Weekly Rotation Playlist already created... Deleting previous tracks");
-            deleteAllSongsInPlaylist(playlistId);
-        } else {
-            LOGGER.info("Playlist not present... Creating now");
-            playlistId = API.createPlaylist(CURRENT_USER.getId(), weeklyRotationName + " Weekly Rotation")
-                .description(getPlaylistDescription())
-                .public_(GENERAL_CONFIG.getConfigOption("weekly-rotation-playlist-public", Boolean::parseBoolean))
-                .build()
-                .execute()
-                .getId();
-        }
+        String playlistId = getAndDeleteSongsOrCreatePlaylist(weeklyRotationName + " Weekly Rotation");
 
         String[] uris = weeklyRotation
             .stream()
@@ -327,10 +343,6 @@ public class Main {
 
 
         API.removeItemsFromPlaylist(playlistId, array).build().execute();
-    }
-
-    public static String getPlaylistDescription() {
-        return "Weekly Rotation playlist for the week of " + getWeeklyRotationPlaylistName() + ". It consists of " + GENERAL_CONFIG.getConfigOption("weekly-rotation-song-limit") + " songs including " + GENERAL_CONFIG.getConfigOption("recent-album-month-limit") + " recent songs. Based on the liked songs of " + CURRENT_USER.getDisplayName() + ". Created by Weekly Rotation bot (https://github.com/OverlordsIII/WeeklyRotation)";
     }
 
     public static String getWeeklyRotationPlaylistName() {
@@ -409,6 +421,46 @@ public class Main {
         }
 
         return savedTracks;
+    }
+
+    public static List<Track> getUserTopTracks() throws IOException, ParseException, SpotifyWebApiException {
+        int totalTracks = API.getUsersTopTracks().build().execute().getTotal();
+
+        List<Track> tracks = new ArrayList<>();
+
+
+        for (int i = 0; i < totalTracks; i += 50) {
+            tracks.addAll(Arrays.asList(API
+                .getUsersTopTracks()
+                .limit(50)
+                .offset(i)
+                .build()
+                .execute()
+                .getItems()
+            ));
+        }
+
+        return tracks;
+    }
+
+    public static List<Artist> getUserTopArtists() throws IOException, ParseException, SpotifyWebApiException {
+        int totalTracks = API.getUsersTopArtists().build().execute().getTotal();
+
+        List<Artist> tracks = new ArrayList<>();
+
+
+        for (int i = 0; i < totalTracks; i += 50) {
+            tracks.addAll(Arrays.asList(API
+                .getUsersTopArtists()
+                .limit(50)
+                .offset(i)
+                .build()
+                .execute()
+                .getItems()
+            ));
+        }
+
+        return tracks;
     }
 
     public static List<PlaylistSimplified> getUserPlaylists() throws IOException, ParseException, SpotifyWebApiException {
