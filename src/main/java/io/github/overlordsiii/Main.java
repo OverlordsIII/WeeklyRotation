@@ -14,6 +14,7 @@ import se.michaelthelin.spotify.SpotifyHttpManager;
 import se.michaelthelin.spotify.enums.AuthorizationScope;
 import se.michaelthelin.spotify.enums.ReleaseDatePrecision;
 import se.michaelthelin.spotify.exceptions.SpotifyWebApiException;
+import se.michaelthelin.spotify.exceptions.detailed.UnauthorizedException;
 import se.michaelthelin.spotify.model_objects.credentials.AuthorizationCodeCredentials;
 import se.michaelthelin.spotify.model_objects.specification.*;
 import se.michaelthelin.spotify.requests.authorization.authorization_code.AuthorizationCodeRequest;
@@ -105,14 +106,24 @@ public class Main {
         API.setRefreshToken(PRIVATE_CONFIG.getConfigOption("refresh-token"));
         API.setAccessToken(PRIVATE_CONFIG.getConfigOption("access-token"));
 
+        try {
+            CURRENT_USER = API.getCurrentUsersProfile().build().execute();
+        } catch (UnauthorizedException e) {
+            AuthorizationCodeCredentials request = API.authorizationCodeRefresh().refresh_token(API.getRefreshToken()).build().execute();
 
-        CURRENT_USER = API.getCurrentUsersProfile().build().execute();
+            PRIVATE_CONFIG.setConfigOption("access-token", request.getAccessToken());
+            PRIVATE_CONFIG.reload();
+
+            API.setAccessToken(PRIVATE_CONFIG.getConfigOption("access-token"));
+
+            CURRENT_USER = API.getCurrentUsersProfile().build().execute();
+        }
 
         LOGGER.info(CURRENT_USER.getId());
 
         Scanner scanner = new Scanner(System.in);
 
-        LOGGER.info("Input 1 for Weekly Rotation, 2 for Liked Songs playlist, 3 to set player to random album, 4 to get Liked Songs Statistics, 5 to get top artists and tracks, 6 to put top tracks into a playlist");
+        LOGGER.info("Input 1 for Weekly Rotation, 2 for Liked Songs playlist, 3 to set player to random album, 4 to get Liked Songs Statistics, 5 to get top artists and tracks, 6 to put top tracks into a playlist, 7 to see similar playlists");
 
         int input = Integer.parseInt(scanner.nextLine());
 
@@ -137,21 +148,40 @@ public class Main {
 
         List<Track> tracks = getTotalEntities(API.getUsersSavedTracks().build().execute().getTotal(), SpotifyApi::getUsersSavedTracks).stream().map(SavedTrack::getTrack).toList();
 
-        for (Category totalEntity : getTotalEntities(API.getListOfCategories().build().execute().getTotal(), SpotifyApi::getListOfCategories)) {
-            LOGGER.info("Processing info for the category: " + totalEntity.getName());
-            List<PlaylistSimplified> playlists = getTotalEntities(API.getCategorysPlaylists(totalEntity.getId()).build().execute().getTotal(), spotifyApi -> spotifyApi.getCategorysPlaylists(totalEntity.getId()));
-            LOGGER.info("# of Playlists in category: " + playlists.size());
-            for (PlaylistSimplified entity : playlists) {
-                int tracksSimilar = 0;
-                for (PlaylistTrack item : API.getPlaylist(entity.getId()).build().execute().getTracks().getItems()) {
-                    if (item.getTrack() instanceof Track track) {
-                        if (tracks.contains(track)) {
-                            tracksSimilar++;
+        List<Category> categories = getTotalEntities(API.getListOfCategories().build().execute().getTotal(), SpotifyApi::getListOfCategories);
+
+        LOGGER.info("Total # of Categories: " + categories.size());
+        try {
+            for (int i = 0; i < categories.size(); i++) {
+                Category totalEntity = categories.get(i);
+                LOGGER.info("Processing info for the category (" + (i + 1) + " out of " + categories.size() + ") : " + totalEntity.getName());
+                List<PlaylistSimplified> playlists;
+                try {
+                    playlists = getTotalEntities(API.getCategorysPlaylists(totalEntity.getId()).build().execute().getTotal(), spotifyApi -> spotifyApi.getCategorysPlaylists(totalEntity.getId()));
+                } catch (Exception e) {
+                    LOGGER.error("Error while getting playlists for category!", e);
+                    continue;
+                }
+                LOGGER.info("# of Playlists in category: " + playlists.size());
+                for (PlaylistSimplified entity : playlists) {
+                    if (entity == null) {
+                        continue;
+                    }
+                    LOGGER.info("Processing playlist: " + entity.getName());
+                    LOGGER.info("https://open.spotify.com/playlist/" + entity.getId());
+                    int tracksSimilar = 0;
+                    for (PlaylistTrack item : API.getPlaylist(entity.getId()).build().execute().getTracks().getItems()) {
+                        if (item.getTrack() instanceof Track track) {
+                            if (tracks.contains(track)) {
+                                tracksSimilar++;
+                            }
                         }
                     }
+                    similarPlaylists.put(entity, tracksSimilar);
                 }
-                similarPlaylists.put(entity, tracksSimilar);
             }
+        } catch (Exception e) {
+            LOGGER.info("Uncaught exception, stopping massive loop", e);
         }
 
         similarPlaylists = sortArtistMap(similarPlaylists);
@@ -201,6 +231,10 @@ public class Main {
         Map<ArtistSimplified, Integer> likedSongsMap = new LinkedHashMap<>();
 
         for (SavedTrack savedTrack : savedSongs) {
+            if (savedTrack == null) {
+                continue;
+            }
+
             ArtistSimplified[] artists = savedTrack.getTrack().getArtists();
 
             for (ArtistSimplified artist : artists) {
