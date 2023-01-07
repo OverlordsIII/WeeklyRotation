@@ -1,9 +1,6 @@
 package io.github.overlordsiii;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import io.github.overlordsiii.config.PropertiesHandler;
 import org.apache.hc.core5.http.ParseException;
@@ -16,30 +13,26 @@ import se.michaelthelin.spotify.enums.ReleaseDatePrecision;
 import se.michaelthelin.spotify.exceptions.SpotifyWebApiException;
 import se.michaelthelin.spotify.exceptions.detailed.UnauthorizedException;
 import se.michaelthelin.spotify.model_objects.credentials.AuthorizationCodeCredentials;
+import se.michaelthelin.spotify.model_objects.special.AlbumSimplifiedSpecial;
 import se.michaelthelin.spotify.model_objects.specification.*;
-import se.michaelthelin.spotify.requests.authorization.authorization_code.AuthorizationCodeRequest;
 import se.michaelthelin.spotify.requests.authorization.authorization_code.AuthorizationCodeUriRequest;
 import se.michaelthelin.spotify.requests.data.AbstractDataPagingRequest;
 import se.michaelthelin.spotify.requests.data.browse.GetRecommendationsRequest;
-import se.michaelthelin.spotify.requests.data.library.GetUsersSavedTracksRequest;
 
 import java.io.IOException;
 import java.net.URI;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Random;
 import java.util.Scanner;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class Main {
 
@@ -138,14 +131,64 @@ public class Main {
             case 4 -> outputLikedSongsData();
             case 5 -> outputTopArtistsAndSongs();
             case 6 -> createTopTracksPlaylist();
-            case 7 -> outputPlaylistsSimilarToYourTastes();
+            case 7 -> {
+                LOGGER.info("Input Categories");
+                LOGGER.info("Categories Are:");
+                for (Category item : API.getListOfCategories().build().execute().getItems()) {
+                    LOGGER.info(item.getName());
+                }
+                String categories = scanner.nextLine();
+                outputPlaylistsSimilarToYourTastes(Stream
+                        .of(categories.split("\\s+"))
+                        .map(String::toLowerCase).toList());
+            }
+            case 8 -> {
+                LOGGER.info("What album are you looking reccomendations on?");
+                String line = scanner.nextLine();
+                createPlaylistOfReccomendationsBasedOnAlbum(line);
+            }
             default -> LOGGER.error("Incorrect Input!");
         }
     }
 
-    private static void outputPlaylistsSimilarToYourTastes() throws IOException, ParseException, SpotifyWebApiException {
-        Map<PlaylistSimplified, Integer> similarPlaylists = new LinkedHashMap<>();
+    private static void createPlaylistOfReccomendationsBasedOnAlbum(String albumName) throws IOException, ParseException, SpotifyWebApiException {
+        AlbumSimplifiedSpecial album = API.searchAlbumsSpecial(albumName).build().execute().getItems()[0];
 
+        List<String> artistIds = Arrays.stream(album.getArtists()).map(ArtistSimplified::getId).toList();
+        int remainingSeeds = 4 - artistIds.size();
+        GetRecommendationsRequest.Builder builder = API.getRecommendations().seed_artists(String.join(",", artistIds)).seed_genres("hip-hop");
+
+        List<String> trackIds = new ArrayList<>();
+
+        List<TrackSimplified> albumTracks = getTotalEntities(API.getAlbumsTracks(album.getId()).build().execute().getTotal(), spotifyApi -> spotifyApi.getAlbumsTracks(album.getId()));
+        Random random = new Random();
+
+        for (int i = 0; i < remainingSeeds; i++) {
+            trackIds.add(albumTracks.get(random.nextInt(albumTracks.size())).getId());
+        }
+
+        builder.seed_tracks(String.join(",", trackIds));
+
+        List<TrackSimplified> recommendedTracks = List.of(builder.limit(100).build().execute().getTracks());
+
+        String name = "Recommendations for " + albumName;
+
+        String playlistId = getAndDeleteSongsOrCreatePlaylist(name);
+
+        List<String> finalTracks = recommendedTracks
+                .stream()
+                .map(trackSimplified -> "spotify:track:" + trackSimplified.getId())
+                .toList();
+
+        addTracksToPlaylist(playlistId, finalTracks);
+
+        API.uploadCustomPlaylistCoverImage(playlistId).image_data()
+
+
+    }
+
+    private static void outputPlaylistsSimilarToYourTastes(List<String> desiredCategories) throws IOException, ParseException, SpotifyWebApiException {
+        Map<PlaylistSimplified, Integer> similarPlaylists = new LinkedHashMap<>();
         List<Track> tracks = getTotalEntities(API.getUsersSavedTracks().build().execute().getTotal(), SpotifyApi::getUsersSavedTracks).stream().map(SavedTrack::getTrack).toList();
 
         List<Category> categories = getTotalEntities(API.getListOfCategories().build().execute().getTotal(), SpotifyApi::getListOfCategories);
@@ -154,6 +197,9 @@ public class Main {
         try {
             for (int i = 0; i < categories.size(); i++) {
                 Category totalEntity = categories.get(i);
+                if (!desiredCategories.contains(totalEntity.getName().toLowerCase())) {
+                    continue;
+                }
                 LOGGER.info("Processing info for the category (" + (i + 1) + " out of " + categories.size() + ") : " + totalEntity.getName());
                 List<PlaylistSimplified> playlists;
                 try {
