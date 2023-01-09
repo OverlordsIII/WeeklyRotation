@@ -20,6 +20,9 @@ dependencies {
 
     implementation 'se.michaelthelin.spotify:spotify-web-api-java:7.3.0'
 
+    implementation 'commons-codec:commons-codec:1.15'
+
+
 
 }
 
