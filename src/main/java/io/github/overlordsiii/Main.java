@@ -1,8 +1,16 @@
 package io.github.overlordsiii;
 
+import com.github.scribejava.core.model.OAuth2AccessToken;
+import com.github.scribejava.core.model.OAuthRequest;
+import com.github.scribejava.core.model.Response;
+import com.github.scribejava.core.model.Verb;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import io.github.overlordsiii.config.PropertiesHandler;
+import io.github.overlordsiii.genius.GeniusAuthentication;
+import io.github.overlordsiii.genius.GeniusRequests;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.hc.core5.http.ParseException;
 import org.slf4j.Logger;
@@ -34,8 +42,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Scanner;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import javax.imageio.ImageIO;
@@ -52,6 +60,11 @@ public class Main {
         .addConfigOption("access-token", "")
         .addConfigOption("refresh-token", "")
         .addConfigOption("redirect-url", "https://example.com/spotify-redirect")
+        .addConfigOption("genius-client-id", "")
+        .addConfigOption("genius-client-secret", "")
+        .addConfigOption("genius-access-token", "")
+        .addConfigOption("genius-access-token-type", "")
+        .addConfigOption("genius-auth-code", "")
         .setFileName("private-config.properties")
         .build();
 
@@ -69,7 +82,13 @@ public class Main {
 
     public static User CURRENT_USER;
 
-    public static void main(String[] args) throws IOException, ParseException, SpotifyWebApiException {
+    public static Gson GSON = new GsonBuilder()
+        .serializeNulls()
+        .setPrettyPrinting()
+        .create();
+
+    //Use Genius to get artist songs
+    public static void main(String[] args) throws IOException, ParseException, SpotifyWebApiException, ExecutionException, InterruptedException {
         URI REDIRECT_URL = SpotifyHttpManager.makeUri(PRIVATE_CONFIG.getConfigOptionNonNull("redirect-url"));
 
         API = new SpotifyApi.Builder()
@@ -116,6 +135,21 @@ public class Main {
             CURRENT_USER = API.getCurrentUsersProfile().build().execute();
         }
 
+        if (!PRIVATE_CONFIG.hasConfigOption("genius-auth-code")) {
+            GeniusAuthentication.buildAuthCodeLink();
+            return;
+        }
+
+        if (!PRIVATE_CONFIG.hasConfigOption("genius-access-token")) {
+            OAuth2AccessToken accessToken = GeniusAuthentication.retrieveAccessToken();
+
+            PRIVATE_CONFIG.setConfigOption("genius-access-token", accessToken.getAccessToken());
+            PRIVATE_CONFIG.setConfigOption("genius-access-token-type", accessToken.getTokenType());
+
+            PRIVATE_CONFIG.reload();
+        }
+
+
         LOGGER.info(CURRENT_USER.getId());
 
         Scanner scanner = new Scanner(System.in);
@@ -159,6 +193,12 @@ public class Main {
             case 10 -> sortAudioFeaturesAndOutput();
             default -> LOGGER.error("Incorrect Input!");
         }
+
+        Response response = GeniusRequests.exampleRequest();
+
+        LOGGER.info(GeniusRequests.beautifyResponse(response));
+
+        response.close();
     }
 
     private static void sortAudioFeaturesAndOutput() throws IOException, ParseException, SpotifyWebApiException {
@@ -169,7 +209,7 @@ public class Main {
             for (AudioFeatures features : API.getAudioFeaturesForSeveralTracks(subListX
                 .stream()
                 .map(savedTrack -> savedTrack.getTrack().getId()).toArray(String[]::new)).build().execute()) {
-                map.put(features.getId(), average(features.getEnergy(), features.getSpeechiness(), features.getDanceability(), features.getValence(), features.getLoudness()/-60, features.getTempo()/250));
+                map.put(features.getId(), features.getTempo());
             }
         }
 
