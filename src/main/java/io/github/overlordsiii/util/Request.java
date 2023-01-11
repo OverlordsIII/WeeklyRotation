@@ -12,20 +12,24 @@ import java.net.http.HttpResponse;
 public class Request {
     private final static HttpClient CLIENT = HttpClient.newHttpClient();
 
-    private final static String BACKEND_PATH = Main.PRIVATE_CONFIG.getConfigOption("genius-api-path");
-
 
     public static JsonObject makeRequest(String path, Method method, JsonObject body) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest
+        HttpRequest request;
+        try {
+            request = HttpRequest
                 .newBuilder()
                 .method(method.name(), JsonUtils.toBody(body))
                 .header("Content-Type", "application/json")
                 .uri(URI.create(path))
                 .build();
+        } catch (RuntimeException e) {
+            Main.LOGGER.error("Error while making " + method + " request to " + path, e);
+            return null;
+        }
 
         HttpResponse<String> response = CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
 
-        Main.LOGGER.info("Made " + method.name() + " request to " + BACKEND_PATH + path + " with body: " + JsonUtils.objToString(body));
+        Main.LOGGER.info("Made " + method.name() + " request to " + path + " with body: " + JsonUtils.objToString(body));
 
         JsonObject responseObj = JsonUtils.toJsonObj(response.body());
         // uncomment when u need to debug

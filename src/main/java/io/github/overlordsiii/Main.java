@@ -10,6 +10,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import io.github.overlordsiii.config.PropertiesHandler;
 import io.github.overlordsiii.genius.GeniusRequests;
+import io.github.overlordsiii.genius.GeniusUtils;
 import io.github.overlordsiii.util.JsonUtils;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.hc.core5.http.ParseException;
@@ -175,10 +176,6 @@ public class Main {
             case 10 -> sortAudioFeaturesAndOutput();
             default -> LOGGER.error("Incorrect Input!");
         }
-
-        JsonObject object = GeniusRequests.getArtistFromName("Travis Scott");
-
-        LOGGER.info(JsonUtils.objToString(object));
     }
 
     private static void sortAudioFeaturesAndOutput() throws IOException, ParseException, SpotifyWebApiException {
@@ -522,7 +519,7 @@ public class Main {
 
     }
 
-    public static void createPlaylistForArtist(String artist) throws IOException, ParseException, SpotifyWebApiException {
+    public static void createPlaylistForArtist(String artist) throws IOException, ParseException, SpotifyWebApiException, InterruptedException {
         String playlistId = getAndDeleteSongsOrCreatePlaylist(artist + " Bangers");
 
         List<SavedTrack> tracks = getTracksWithArtist(artist);
@@ -562,17 +559,25 @@ public class Main {
         return playlistId;
     }
 
-    private static List<SavedTrack> getTracksWithArtist(String artist) throws IOException, ParseException, SpotifyWebApiException {
+    private static List<SavedTrack> getTracksWithArtist(String artist) throws IOException, ParseException, SpotifyWebApiException, InterruptedException {
         List<SavedTrack> likedSongs = getTotalEntities(API.getUsersSavedTracks().build().execute().getTotal(), SpotifyApi::getUsersSavedTracks);
 
         List<SavedTrack> artistSongs = new ArrayList<>();
 
-        likedSongs.forEach(savedTrack -> {
-            String artists = toString(savedTrack.getTrack().getArtists(), ArtistSimplified::getName);
-            if (artists.contains(artist)) {
+        for (SavedTrack savedTrack : likedSongs) {
+            String name = savedTrack.getTrack().getName() + " " + savedTrack.getTrack().getArtists()[0].getName();
+            List<JsonObject> objects = GeniusRequests.getArtistsFromName(name, true);
+            List<String> names = GeniusUtils.getArtistNamesFromArtistBodies(objects);
+
+            if (names.contains(artist)) {
                 artistSongs.add(savedTrack);
             }
-        });
+
+         //   String artists = toString(savedTrack.getTrack().getArtists(), ArtistSimplified::getName);
+         //   if (artists.contains(artist)) {
+         //       artistSongs.add(savedTrack);
+         //   }
+        }
 
         return artistSongs;
     }
