@@ -9,8 +9,8 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import io.github.overlordsiii.config.PropertiesHandler;
-import io.github.overlordsiii.genius.GeniusAuthentication;
 import io.github.overlordsiii.genius.GeniusRequests;
+import io.github.overlordsiii.util.JsonUtils;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.hc.core5.http.ParseException;
 import org.slf4j.Logger;
@@ -32,6 +32,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.time.LocalDate;
 import java.util.*;
@@ -54,11 +55,7 @@ public class Main {
         .addConfigOption("access-token", "")
         .addConfigOption("refresh-token", "")
         .addConfigOption("redirect-url", "https://example.com/spotify-redirect")
-        .addConfigOption("genius-client-id", "")
-        .addConfigOption("genius-client-secret", "")
-        .addConfigOption("genius-access-token", "")
-        .addConfigOption("genius-access-token-type", "")
-        .addConfigOption("genius-auth-code", "")
+        .addConfigOption("genius-backend-path", "https://genius.com/api/")
         .setFileName("private-config.properties")
         .build();
 
@@ -83,7 +80,7 @@ public class Main {
 
     // Use Genius to get artist songs
     // use reccomendations for album multiple requests
-    public static void main(String[] args) throws IOException, ParseException, SpotifyWebApiException, ExecutionException, InterruptedException {
+    public static void main(String[] args) throws IOException, ParseException, SpotifyWebApiException, ExecutionException, InterruptedException, URISyntaxException {
         URI REDIRECT_URL = SpotifyHttpManager.makeUri(PRIVATE_CONFIG.getConfigOptionNonNull("redirect-url"));
 
         API = new SpotifyApi.Builder()
@@ -128,20 +125,6 @@ public class Main {
             API.setAccessToken(PRIVATE_CONFIG.getConfigOption("access-token"));
 
             CURRENT_USER = API.getCurrentUsersProfile().build().execute();
-        }
-
-        if (!PRIVATE_CONFIG.hasConfigOption("genius-auth-code")) {
-            GeniusAuthentication.buildAuthCodeLink();
-            return;
-        }
-
-        if (!PRIVATE_CONFIG.hasConfigOption("genius-access-token")) {
-            OAuth2AccessToken accessToken = GeniusAuthentication.retrieveAccessToken();
-
-            PRIVATE_CONFIG.setConfigOption("genius-access-token", accessToken.getAccessToken());
-            PRIVATE_CONFIG.setConfigOption("genius-access-token-type", accessToken.getTokenType());
-
-            PRIVATE_CONFIG.reload();
         }
 
 
@@ -193,11 +176,9 @@ public class Main {
             default -> LOGGER.error("Incorrect Input!");
         }
 
-//        Response response = GeniusRequests.exampleRequest();
+        JsonObject object = GeniusRequests.getArtistFromName("Travis Scott");
 
-  //      LOGGER.info(GeniusRequests.beautifyResponse(response));
-
-    //    response.close();
+        LOGGER.info(JsonUtils.objToString(object));
     }
 
     private static void sortAudioFeaturesAndOutput() throws IOException, ParseException, SpotifyWebApiException {
