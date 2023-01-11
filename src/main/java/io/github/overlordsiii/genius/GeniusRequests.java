@@ -22,6 +22,11 @@ public class GeniusRequests {
 	public static JsonObject getArtistFromName(String name) throws IOException, InterruptedException, URISyntaxException {
 
 		JsonObject object = Request.makeRequest("https://genius.com/api/search?q=" + String.join("+", name.split("\\s+")), Method.GET, null);
+		JsonObject meta = object.get("meta").getAsJsonObject();
+		int status = meta.get("status").getAsInt();
+		if (status != 200) {
+			throw new RuntimeException("Error while processing request!: " );
+		}
 		return object;
 	}
 
