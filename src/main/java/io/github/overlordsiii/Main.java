@@ -645,19 +645,23 @@ public class Main {
 
     private static <T> List<T> getAllPagingItems(AbstractDataPagingRequest.Builder<T, ?> requestBuilder) throws IOException, ParseException, SpotifyWebApiException {
         List<T> list = new ArrayList<>();
-        Paging<T> paging = requestBuilder.build().execute();
-        do {
-            list.addAll(Arrays.asList(paging.getItems()));
-            requestBuilder.offset(paging.getOffset() + paging.getLimit());
-            paging = requestBuilder.build().execute();
-        } while (paging.getNext() != null);
 
+        int total = requestBuilder.build().execute().getTotal();
+
+        for (int i = 0; i < total; i += 50) {
+            list.addAll(List.of(requestBuilder
+                    .offset(i)
+                    .limit(50)
+                    .build()
+                    .execute()
+                    .getItems()));
+        }
         return list;
     }
 
 
     private static void deleteAllSongsInPlaylist(String playlistId) throws IOException, ParseException, SpotifyWebApiException {
-        JsonArray array = new JsonArray();
+        List<String> array = new ArrayList<>();
 
         for (PlaylistTrack item : getAllPagingItems(API.getPlaylistsItems(playlistId))) {
             String id = item.getTrack().getId();
@@ -666,13 +670,19 @@ public class Main {
                 continue;
             }
 
-            JsonObject object = new JsonObject();
-            object.addProperty("uri", "spotify:track:" + id);
-            array.add(object);
+            array.add("spotify:track:" + id);
         }
 
+        for (List<String> subListX : subListX(array, 100)) {
+            JsonArray object = new JsonArray();
+            subListX.forEach(s -> {
+                JsonObject object1 = new JsonObject();
+                object1.addProperty("uri", s);
+                object.add(object1);
+            });
 
-        API.removeItemsFromPlaylist(playlistId, array).build().execute();
+            API.removeItemsFromPlaylist(playlistId, object).build().execute();
+        }
     }
 
     public static String getWeeklyRotationPlaylistName() {
