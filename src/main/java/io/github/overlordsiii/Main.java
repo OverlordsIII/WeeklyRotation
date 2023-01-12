@@ -530,6 +530,10 @@ public class Main {
             .toList();
 
         addTracksToPlaylist(playlistId, uris);
+
+        Image image = getBiggestImage(API.searchArtists(artist).build().execute().getItems()[0].getImages());
+
+        uploadImageToPlaylist(playlistId, image);
     }
 
     private static String getAndDeleteSongsOrCreatePlaylist(String name) throws IOException, ParseException, SpotifyWebApiException {
@@ -565,18 +569,14 @@ public class Main {
         List<SavedTrack> artistSongs = new ArrayList<>();
 
         for (SavedTrack savedTrack : likedSongs) {
-            String name = savedTrack.getTrack().getName() + " " + savedTrack.getTrack().getArtists()[0].getName();
-            List<JsonObject> objects = GeniusRequests.getArtistsFromName(name, true);
-            List<String> names = GeniusUtils.getArtistNamesFromArtistBodies(objects);
-
-            if (names.contains(artist)) {
+            if (GeniusRequests.isArtistOnSong(savedTrack.getTrack().getName(), savedTrack.getTrack().getArtists()[0].getName(), artist)) {
                 artistSongs.add(savedTrack);
             }
 
-         //   String artists = toString(savedTrack.getTrack().getArtists(), ArtistSimplified::getName);
-         //   if (artists.contains(artist)) {
-         //       artistSongs.add(savedTrack);
-         //   }
+            String artists = toString(savedTrack.getTrack().getArtists(), ArtistSimplified::getName);
+            if (artists.contains(artist) && !artistSongs.contains(savedTrack)) {
+                artistSongs.add(savedTrack);
+            }
         }
 
         return artistSongs;
@@ -643,10 +643,23 @@ public class Main {
         return map.entrySet().stream().toList().get(0).getKey();
     }
 
+    private static <T> List<T> getAllPagingItems(AbstractDataPagingRequest.Builder<T, ?> requestBuilder) throws IOException, ParseException, SpotifyWebApiException {
+        List<T> list = new ArrayList<>();
+        Paging<T> paging = requestBuilder.build().execute();
+        do {
+            list.addAll(Arrays.asList(paging.getItems()));
+            requestBuilder.offset(paging.getOffset() + paging.getLimit());
+            paging = requestBuilder.build().execute();
+        } while (paging.getNext() != null);
+
+        return list;
+    }
+
+
     private static void deleteAllSongsInPlaylist(String playlistId) throws IOException, ParseException, SpotifyWebApiException {
         JsonArray array = new JsonArray();
 
-        for (PlaylistTrack item : API.getPlaylist(playlistId).build().execute().getTracks().getItems()) {
+        for (PlaylistTrack item : getAllPagingItems(API.getPlaylistsItems(playlistId))) {
             String id = item.getTrack().getId();
 
             if (item.getIsLocal()) {
