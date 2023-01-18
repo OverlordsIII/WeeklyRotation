@@ -1,17 +1,11 @@
 package io.github.overlordsiii;
 
-import com.github.scribejava.core.model.OAuth2AccessToken;
-import com.github.scribejava.core.model.OAuthRequest;
-import com.github.scribejava.core.model.Response;
-import com.github.scribejava.core.model.Verb;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import io.github.overlordsiii.config.PropertiesHandler;
 import io.github.overlordsiii.genius.GeniusRequests;
-import io.github.overlordsiii.genius.GeniusUtils;
-import io.github.overlordsiii.util.JsonUtils;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.hc.core5.http.ParseException;
 import org.slf4j.Logger;
@@ -21,13 +15,13 @@ import se.michaelthelin.spotify.SpotifyHttpManager;
 import se.michaelthelin.spotify.enums.AuthorizationScope;
 import se.michaelthelin.spotify.enums.ReleaseDatePrecision;
 import se.michaelthelin.spotify.exceptions.SpotifyWebApiException;
+import se.michaelthelin.spotify.exceptions.detailed.NotFoundException;
 import se.michaelthelin.spotify.exceptions.detailed.UnauthorizedException;
 import se.michaelthelin.spotify.model_objects.credentials.AuthorizationCodeCredentials;
 import se.michaelthelin.spotify.model_objects.special.AlbumSimplifiedSpecial;
 import se.michaelthelin.spotify.model_objects.specification.*;
 import se.michaelthelin.spotify.requests.authorization.authorization_code.AuthorizationCodeUriRequest;
 import se.michaelthelin.spotify.requests.data.AbstractDataPagingRequest;
-import se.michaelthelin.spotify.requests.data.browse.GetRecommendationsRequest;
 
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -533,7 +527,9 @@ public class Main {
 
         Image image = getBiggestImage(API.searchArtists(artist).build().execute().getItems()[0].getImages());
 
-        uploadImageToPlaylist(playlistId, image);
+        if (API.getPlaylist(playlistId).build().execute().getImages().length != 1) {
+            uploadImageToPlaylist(playlistId, image);
+        }
     }
 
     private static String getAndDeleteSongsOrCreatePlaylist(String name) throws IOException, ParseException, SpotifyWebApiException {
