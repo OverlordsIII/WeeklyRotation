@@ -12,6 +12,8 @@ import io.github.overlordsiii.config.PropertiesHandler;
 import io.github.overlordsiii.genius.GeniusRequests;
 import io.github.overlordsiii.genius.GeniusUtils;
 import io.github.overlordsiii.util.JsonUtils;
+import io.github.overlordsiii.util.Method;
+import io.github.overlordsiii.util.Request;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.hc.core5.http.ParseException;
 import org.slf4j.Logger;
@@ -22,6 +24,7 @@ import se.michaelthelin.spotify.enums.AuthorizationScope;
 import se.michaelthelin.spotify.enums.ReleaseDatePrecision;
 import se.michaelthelin.spotify.exceptions.SpotifyWebApiException;
 import se.michaelthelin.spotify.exceptions.detailed.UnauthorizedException;
+import se.michaelthelin.spotify.model_objects.AbstractModelObject;
 import se.michaelthelin.spotify.model_objects.credentials.AuthorizationCodeCredentials;
 import se.michaelthelin.spotify.model_objects.special.AlbumSimplifiedSpecial;
 import se.michaelthelin.spotify.model_objects.specification.*;
@@ -32,6 +35,8 @@ import se.michaelthelin.spotify.requests.data.browse.GetRecommendationsRequest;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.MathContext;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
@@ -79,9 +84,8 @@ public class Main {
         .setPrettyPrinting()
         .create();
 
-    // Use Genius to get artist songs
-    // use reccomendations for album multiple requests
-    public static void main(String[] args) throws IOException, ParseException, SpotifyWebApiException, ExecutionException, InterruptedException, URISyntaxException {
+    // Use genius to get duo collabs
+    public static void main(String[] args) throws IOException, ParseException, SpotifyWebApiException, InterruptedException {
         URI REDIRECT_URL = SpotifyHttpManager.makeUri(PRIVATE_CONFIG.getConfigOptionNonNull("redirect-url"));
 
         API = new SpotifyApi.Builder()
@@ -142,7 +146,7 @@ public class Main {
             case 2 -> {
                 LOGGER.info("Input artist name");
                 String name = scanner.nextLine();
-                createPlaylistForArtist(name);
+                createPlaylistForArtist(false, name);
             }
             case 3 -> setPlayerToRandomAlbum();
             case 4 -> outputLikedSongsData();
@@ -174,8 +178,44 @@ public class Main {
                 createPlaylistOfReccomendationsBasedOnSingle(line, genre);
             }
             case 10 -> sortAudioFeaturesAndOutput();
+            case 11 -> {
+                LOGGER.info("Input artist 1");
+                String artist1 = scanner.nextLine();
+                LOGGER.info("Input artist 2");
+                String artist2 = scanner.nextLine();
+                createPlaylistForArtist(true, artist1, artist2);
+            }
+            // create playlist with artist + producer
+            case 12 -> {
+                LOGGER.info("Input artist");
+                String artist = scanner.nextLine();
+                LOGGER.info("Input producer");
+                String producer = scanner.nextLine();
+                createPlaylistForArtistAndProducer(artist, producer);
+            }
             default -> LOGGER.error("Incorrect Input!");
         }
+    }
+
+    private static void createPlaylistForArtistAndProducer(String artist, String producer) throws IOException, ParseException, SpotifyWebApiException, InterruptedException {
+
+        List<String> savedTrackIds = getTotalEntities(API.getUsersSavedTracks().build().execute().getTotal(), SpotifyApi::getUsersSavedTracks)
+                .stream()
+                .map(SavedTrack::getTrack)
+                .map(Track::getId)
+                .toList();
+
+        Artist artist1 = API.searchArtists(artist).build().execute().getItems()[0];
+        List<TrackSimplified> tracks = new ArrayList<>();
+        for (AlbumSimplified albumSimplified : getAllPagingItems(API.getArtistsAlbums(artist1.getId()))) {
+            for (TrackSimplified track : getTotalEntities(API.getAlbumsTracks(albumSimplified.getId()).build().execute().getTotal(), spotifyApi -> spotifyApi.getAlbumsTracks(albumSimplified.getId()))) {
+                if (GeniusRequests.isProducerOnSong(track.getName(), track.getArtists()[0].getName(), producer)) {
+                    tracks.add(track);
+                }
+            }
+        }
+
+
     }
 
     private static void sortAudioFeaturesAndOutput() throws IOException, ParseException, SpotifyWebApiException {
@@ -419,12 +459,44 @@ public class Main {
     private static void createTopTracksPlaylist() throws IOException, ParseException, SpotifyWebApiException {
         String playlistId = getAndDeleteSongsOrCreatePlaylist(API.getCurrentUsersProfile().build().execute().getDisplayName() + "'s Top Songs");
 
-        List<String> uris = getTotalEntities(API.getUsersTopTracks().build().execute().getTotal(), SpotifyApi::getUsersTopTracks)
+        List<Track> tracks = getTotalEntities(API.getUsersTopTracks().build().execute().getTotal(), SpotifyApi::getUsersTopTracks);
+
+        List<String> uris = tracks
             .stream()
             .map(track -> "spotify:track:" + track.getId())
             .toList();
 
         addTracksToPlaylist(playlistId, uris);
+
+        Map<AlbumSimplified, Number> map = getAlbumStatistics(tracks);
+
+        Image image =  getBiggestImage(map.entrySet().stream().toList().get(0).getKey().getImages());
+
+        uploadImageToPlaylist(playlistId, image);
+
+        Map<ArtistSimplified, Number> artistSimplifiedNumberMap = new LinkedHashMap<>();
+
+        for (Track track : tracks) {
+            if (track == null) {
+                continue;
+            }
+
+            ArtistSimplified[] artists = track.getArtists();
+
+            for (ArtistSimplified artist : artists) {
+                if (artistSimplifiedNumberMap.containsKey(artist)) {
+                    artistSimplifiedNumberMap.replace(artist, artistSimplifiedNumberMap.get(artist).intValue() + 1);
+                } else {
+                    artistSimplifiedNumberMap.put(artist, 1);
+                }
+            }
+        }
+
+        artistSimplifiedNumberMap = sortArtistMap(artistSimplifiedNumberMap);
+
+        artistSimplifiedNumberMap.forEach((artistSimplified, integer) -> {
+            LOGGER.info(artistSimplified.getName() + " - " + 100*(integer.intValue()/50.0) + "%");
+        });
     }
 
     private static void addTracksToPlaylist(String playlistId, List<String> uris) throws IOException, SpotifyWebApiException, ParseException {
@@ -474,7 +546,8 @@ public class Main {
         likedSongsMap = sortArtistMap(likedSongsMap);
 
         likedSongsMap.forEach((artistSimplified, integer) -> {
-            LOGGER.info(artistSimplified.getName() + " - " + integer.intValue() + " Liked Songs");
+            BigDecimal bigDecimal = BigDecimal.valueOf(100 * (integer.intValue() / (double) savedSongs.size())).round(new MathContext(3));
+            LOGGER.info(artistSimplified.getName() + " - " + integer.intValue() + " (" + bigDecimal + "%) Liked Songs");
         });
     }
 
@@ -519,19 +592,26 @@ public class Main {
 
     }
 
-    public static void createPlaylistForArtist(String artist) throws IOException, ParseException, SpotifyWebApiException, InterruptedException {
-        String playlistId = getAndDeleteSongsOrCreatePlaylist(artist + " Bangers");
+    public static void createPlaylistForArtist(boolean checkAll, String... artist) throws IOException, ParseException, SpotifyWebApiException, InterruptedException {
+        String playlistId = getAndDeleteSongsOrCreatePlaylist(String.join(", ", artist) + " Bangers");
 
-        List<SavedTrack> tracks = getTracksWithArtist(artist);
+        List<String> tracks = getTracksWithArtist(checkAll, artist);
 
         List<String> uris = tracks
             .stream()
-            .map(savedTrack -> "spotify:track:" + savedTrack.getTrack().getId())
+            .map(savedTrack -> "spotify:track:" + savedTrack)
             .toList();
 
         addTracksToPlaylist(playlistId, uris);
 
-        Image image = getBiggestImage(API.searchArtists(artist).build().execute().getItems()[0].getImages());
+        Random random = new Random();
+
+        Image image;
+        if (artist.length == 1) {
+            image = getBiggestImage(API.searchArtists(artist[0]).build().execute().getItems()[0].getImages());
+        } else {
+            image = getBiggestImage(API.getTrack(tracks.get(random.nextInt(tracks.size()))).build().execute().getAlbum().getImages());
+        }
 
         uploadImageToPlaylist(playlistId, image);
     }
@@ -563,19 +643,62 @@ public class Main {
         return playlistId;
     }
 
-    private static List<SavedTrack> getTracksWithArtist(String artist) throws IOException, ParseException, SpotifyWebApiException, InterruptedException {
-        List<SavedTrack> likedSongs = getTotalEntities(API.getUsersSavedTracks().build().execute().getTotal(), SpotifyApi::getUsersSavedTracks);
+    private static List<String> getTracksWithArtist(boolean checkAll, String... artist) throws IOException, ParseException, SpotifyWebApiException, InterruptedException {
+        List<AbstractModelObject> likedSongs;
 
-        List<SavedTrack> artistSongs = new ArrayList<>();
+        List<String> artistSongs = new ArrayList<>();
 
-        for (SavedTrack savedTrack : likedSongs) {
-            if (GeniusRequests.isArtistOnSong(savedTrack.getTrack().getName(), savedTrack.getTrack().getArtists()[0].getName(), artist)) {
-                artistSongs.add(savedTrack);
+        if (checkAll) {
+            List<AbstractModelObject> objects = new ArrayList<>();
+            for (String s : artist) {
+                String id = API.searchArtists(s).build().execute().getItems()[0].getId();
+                for (AlbumSimplified allPagingItem : getAllPagingItems(API.getArtistsAlbums(id))) {
+                    objects.addAll(getTotalEntities(API.getAlbumsTracks(allPagingItem.getId()).build().execute().getTotal(), spotifyApi -> spotifyApi.getAlbumsTracks(allPagingItem.getId())));
+                }
             }
 
-            String artists = toString(savedTrack.getTrack().getArtists(), ArtistSimplified::getName);
-            if (artists.contains(artist) && !artistSongs.contains(savedTrack)) {
-                artistSongs.add(savedTrack);
+            likedSongs = objects;
+        } else {
+            likedSongs = getTotalEntities(API.getUsersSavedTracks().build().execute().getTotal(), SpotifyApi::getUsersSavedTracks)
+                    .stream()
+                    .map(SavedTrack::getTrack)
+                    .map(track -> (AbstractModelObject) track)
+                    .toList();
+        }
+
+        for (AbstractModelObject savedTrack : likedSongs) {
+            if (savedTrack instanceof Track track) {
+                if (GeniusRequests.isArtistOnSong(track.getName(), track.getArtists()[0].getName(), artist)) {
+                    artistSongs.add(track.getId());
+                }
+
+                String artists = toString(track.getArtists(), ArtistSimplified::getName);
+                boolean bl = true;
+                for (String s : artist) {
+                    if (!artists.contains(s)) {
+                        bl = false;
+                        break;
+                    }
+                }
+                if (bl && !artistSongs.contains(track.getId())) {
+                    artistSongs.add(track.getId());
+                }
+            } else if (savedTrack instanceof TrackSimplified trackSimplified) {
+                if (GeniusRequests.isArtistOnSong(trackSimplified.getName(), trackSimplified.getArtists()[0].getName(), artist)) {
+                    artistSongs.add(trackSimplified.getId());
+                }
+
+                String artists = toString(trackSimplified.getArtists(), ArtistSimplified::getName);
+                boolean bl = true;
+                for (String s : artist) {
+                    if (!artists.contains(s)) {
+                        bl = false;
+                        break;
+                    }
+                }
+                if (bl && !artistSongs.contains(trackSimplified)) {
+                    artistSongs.add(trackSimplified.getId());
+                }
             }
         }
 
@@ -618,7 +741,7 @@ public class Main {
 
         API.addItemsToPlaylist(playlistId, uris).build().execute();
 
-        AlbumSimplified albumSimplified = getMostAppearingAlbum(weeklyRotation.stream().map(SavedTrack::getTrack).toList());
+        AlbumSimplified albumSimplified = getAlbumStatistics(weeklyRotation.stream().map(SavedTrack::getTrack).toList()).entrySet().stream().toList().get(0).getKey();
 
         Image image = getBiggestImage(albumSimplified.getImages());
 
@@ -627,7 +750,7 @@ public class Main {
         LOGGER.info("https://open.spotify.com/playlist/" + playlistId);
     }
 
-    private static AlbumSimplified getMostAppearingAlbum(List<Track> tracks) {
+    private static Map<AlbumSimplified, Number> getAlbumStatistics(List<Track> tracks) {
         Map<AlbumSimplified, Number> map = new LinkedHashMap<>();
 
         for (Track track : tracks) {
@@ -640,7 +763,7 @@ public class Main {
 
         map = sortArtistMap(map);
 
-        return map.entrySet().stream().toList().get(0).getKey();
+        return map;
     }
 
     private static <T> List<T> getAllPagingItems(AbstractDataPagingRequest.Builder<T, ?> requestBuilder) throws IOException, ParseException, SpotifyWebApiException {
