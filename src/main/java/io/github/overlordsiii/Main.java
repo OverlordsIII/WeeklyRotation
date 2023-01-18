@@ -87,6 +87,8 @@ public class Main {
 
     public static User CURRENT_USER;
 
+    public static Random RANDOM = new Random();
+
     public static Gson GSON = new GsonBuilder()
         .serializeNulls()
         .setPrettyPrinting()
@@ -207,23 +209,33 @@ public class Main {
 
     private static void createPlaylistForArtistAndProducer(String artist, String producer) throws IOException, ParseException, SpotifyWebApiException, InterruptedException {
 
-        List<String> savedTrackIds = getTotalEntities(API.getUsersSavedTracks().build().execute().getTotal(), SpotifyApi::getUsersSavedTracks)
-                .stream()
-                .map(SavedTrack::getTrack)
-                .map(Track::getId)
-                .toList();
+        String playlistId = getAndDeleteSongsOrCreatePlaylist(artist + " with Production by " + producer);
 
         Artist artist1 = API.searchArtists(artist).build().execute().getItems()[0];
         List<TrackSimplified> tracks = new ArrayList<>();
+        List<String> albumNames = new ArrayList<>();
         for (AlbumSimplified albumSimplified : getAllPagingItems(API.getArtistsAlbums(artist1.getId()))) {
-            for (TrackSimplified track : getTotalEntities(API.getAlbumsTracks(albumSimplified.getId()).build().execute().getTotal(), spotifyApi -> spotifyApi.getAlbumsTracks(albumSimplified.getId()))) {
-                if (GeniusRequests.isProducerOnSong(track.getName(), track.getArtists()[0].getName(), producer)) {
-                    tracks.add(track);
+
+            if (!albumNames.contains(albumSimplified.getName()) && toString(albumSimplified.getArtists(), ArtistSimplified::getName).contains(artist)) {
+                albumNames.add(albumSimplified.getName());
+                for (TrackSimplified track : getTotalEntities(API.getAlbumsTracks(albumSimplified.getId()).build().execute().getTotal(), spotifyApi -> spotifyApi.getAlbumsTracks(albumSimplified.getId()))) {
+                    if (GeniusRequests.isProducerOnSong(track.getName(), track.getArtists()[0].getName(), producer)) {
+                        tracks.add(track);
+                    }
                 }
             }
         }
 
+        List<String> uris = tracks
+            .stream()
+            .map(trackSimplified -> "spotify:track:" + trackSimplified.getId())
+            .toList();
 
+        addTracksToPlaylist(playlistId, uris);
+
+        Image image = getBiggestImage(API.getTrack(tracks.get(RANDOM.nextInt(tracks.size())).getId()).build().execute().getAlbum().getImages());
+
+        uploadImageToPlaylist(playlistId, image);
     }
 
     private static void sortAudioFeaturesAndOutput() throws IOException, ParseException, SpotifyWebApiException {
@@ -582,9 +594,7 @@ public class Main {
     private static void setPlayerToRandomAlbum() throws IOException, ParseException, SpotifyWebApiException {
         List<SavedAlbum> savedAlbums = getTotalEntities(API.getCurrentUsersSavedAlbums().build().execute().getTotal(), SpotifyApi::getCurrentUsersSavedAlbums);
 
-        Random random = new Random();
-
-        SavedAlbum randomAlbum = savedAlbums.get(random.nextInt(savedAlbums.size()));
+        SavedAlbum randomAlbum = savedAlbums.get(RANDOM.nextInt(savedAlbums.size()));
 
 
         List<String> tracks = Arrays.stream(randomAlbum.getAlbum().getTracks().getItems())
@@ -612,13 +622,11 @@ public class Main {
 
         addTracksToPlaylist(playlistId, uris);
 
-        Random random = new Random();
-
         Image image;
         if (artist.length == 1) {
             image = getBiggestImage(API.searchArtists(artist[0]).build().execute().getItems()[0].getImages());
         } else {
-            image = getBiggestImage(API.getTrack(tracks.get(random.nextInt(tracks.size()))).build().execute().getAlbum().getImages());
+            image = getBiggestImage(API.getTrack(tracks.get(RANDOM.nextInt(tracks.size()))).build().execute().getAlbum().getImages());
         }
 
         if (API.getPlaylist(playlistId).build().execute().getImages().length != 1) {
@@ -660,10 +668,23 @@ public class Main {
 
         if (checkAll) {
             List<AbstractModelObject> objects = new ArrayList<>();
+            List<String> reportedAlbums = new ArrayList<>();
             for (String s : artist) {
                 String id = API.searchArtists(s).build().execute().getItems()[0].getId();
                 for (AlbumSimplified allPagingItem : getAllPagingItems(API.getArtistsAlbums(id))) {
-                    objects.addAll(getTotalEntities(API.getAlbumsTracks(allPagingItem.getId()).build().execute().getTotal(), spotifyApi -> spotifyApi.getAlbumsTracks(allPagingItem.getId())));
+                    if (!reportedAlbums.contains(allPagingItem.getName()) && toString(allPagingItem.getArtists(), ArtistSimplified::getName).contains(s)) {
+                        List<String> names = objects
+                            .stream()
+                            .map(abstractModelObject -> (TrackSimplified) abstractModelObject)
+                            .map(TrackSimplified::getName)
+                            .toList();
+                        if (!names.contains(allPagingItem.getName())) {
+                            LOGGER.info("Retrieving tracks from: " + allPagingItem.getName() + " " + toString(allPagingItem.getArtists(), ArtistSimplified::getName));
+                            List<TrackSimplified> trackSimplifieds = getTotalEntities(API.getAlbumsTracks(allPagingItem.getId()).build().execute().getTotal(), spotifyApi -> spotifyApi.getAlbumsTracks(allPagingItem.getId()));
+                            objects.addAll(trackSimplifieds);
+                            reportedAlbums.add(allPagingItem.getName());
+                        }
+                    }
                 }
             }
 
@@ -836,16 +857,15 @@ public class Main {
 
     public static List<SavedTrack> createWeeklyRotation(List<SavedTrack> savedTracks, List<SavedTrack> recentTracks) {
         List<SavedTrack> weeklyRotation = new ArrayList<>();
-        Random random = new Random();
 
         for (int i = 0; i < GENERAL_CONFIG.getConfigOption("recent-songs-limit", Integer::parseInt); i++) {
-            weeklyRotation.add(recentTracks.get(random.nextInt(recentTracks.size())));
+            weeklyRotation.add(recentTracks.get(RANDOM.nextInt(recentTracks.size())));
         }
 
         int currentSize = weeklyRotation.size();
 
         for (int i = 0; i < (GENERAL_CONFIG.getConfigOption("weekly-rotation-song-limit", Integer::parseInt) - currentSize); i++) {
-            weeklyRotation.add(savedTracks.get(random.nextInt(savedTracks.size())));
+            weeklyRotation.add(savedTracks.get(RANDOM.nextInt(savedTracks.size())));
         }
 
         return weeklyRotation;

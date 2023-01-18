@@ -111,7 +111,7 @@ public class GeniusRequests {
 
 		StringBuilder producers = new StringBuilder();
 
-		response.getAsJsonObject("song").getAsJsonArray("producer_artists").forEach(jsonElement -> {
+		response.getAsJsonObject("response").getAsJsonObject("song").getAsJsonArray("producer_artists").forEach(jsonElement -> {
 			JsonObject object1 = jsonElement.getAsJsonObject();
 			String name = object1.get("name").getAsString();
 			producers.append(name).append(", ");
