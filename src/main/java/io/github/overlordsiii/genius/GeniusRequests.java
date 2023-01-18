@@ -1,20 +1,11 @@
 package io.github.overlordsiii.genius;
 
 import java.io.IOException;
-import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.time.chrono.IsoEra;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
-import java.util.stream.Collectors;
 
-import com.github.scribejava.core.model.OAuthRequest;
-import com.github.scribejava.core.model.Response;
-import com.github.scribejava.core.model.Verb;
-import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -180,13 +171,5 @@ public class GeniusRequests {
 		if (status != 200) {
 			throw new RuntimeException("Error while processing request!: " + meta.get("message").getAsString());
 		}
-	}
-
-	public static String beautifyResponse(Response response) throws IOException {
-		String body = response.getBody();
-
-		JsonElement element = Main.GSON.fromJson(body, JsonElement.class);
-
-		return Main.GSON.toJson(element);
 	}
 }
