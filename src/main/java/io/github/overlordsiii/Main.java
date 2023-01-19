@@ -750,7 +750,17 @@ public class Main {
         return builder.toString();
     }
 
+    public static void deleteOtherWeeklyRotationPlaylists() throws IOException, ParseException, SpotifyWebApiException {
+        for (PlaylistSimplified totalEntity : getTotalEntities(API.getListOfCurrentUsersPlaylists().build().execute().getTotal(), SpotifyApi::getListOfCurrentUsersPlaylists)) {
+            if (totalEntity.getName().contains("Weekly Rotation")) {
+                API.unfollowPlaylist(totalEntity.getId()).build().execute();
+            }
+        }
+    }
+
     public static void executeWeeklyRotation() throws IOException, ParseException, SpotifyWebApiException {
+        deleteOtherWeeklyRotationPlaylists();
+
         List<SavedTrack> savedTracks = getTotalEntities(API.getUsersSavedTracks().build().execute().getTotal(), SpotifyApi::getUsersSavedTracks);
 
         List<SavedTrack> recentTracks = getTracksWithinLastXMonths(savedTracks, GENERAL_CONFIG.getConfigOption("recent-album-month-limit", Integer::parseInt));
