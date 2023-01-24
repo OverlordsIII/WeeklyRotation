@@ -34,6 +34,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import se.michaelthelin.spotify.SpotifyApi;
 import se.michaelthelin.spotify.SpotifyHttpManager;
+import se.michaelthelin.spotify.enums.AlbumType;
 import se.michaelthelin.spotify.enums.AuthorizationScope;
 import se.michaelthelin.spotify.enums.ReleaseDatePrecision;
 import se.michaelthelin.spotify.exceptions.SpotifyWebApiException;
@@ -41,6 +42,7 @@ import se.michaelthelin.spotify.exceptions.detailed.UnauthorizedException;
 import se.michaelthelin.spotify.model_objects.AbstractModelObject;
 import se.michaelthelin.spotify.model_objects.credentials.AuthorizationCodeCredentials;
 import se.michaelthelin.spotify.model_objects.special.AlbumSimplifiedSpecial;
+import se.michaelthelin.spotify.model_objects.specification.Album;
 import se.michaelthelin.spotify.model_objects.specification.AlbumSimplified;
 import se.michaelthelin.spotify.model_objects.specification.Artist;
 import se.michaelthelin.spotify.model_objects.specification.ArtistSimplified;
@@ -203,8 +205,58 @@ public class Main {
                 String producer = scanner.nextLine();
                 createPlaylistForArtistAndProducer(artist, producer);
             }
+            case 13 -> {
+                LOGGER.info("Only unliked albums or no?");
+                boolean bool = scanner.nextBoolean();
+                outputLikedSongsAlbumData(bool);
+            }
             default -> LOGGER.error("Incorrect Input!");
         }
+    }
+
+    private static void outputLikedSongsAlbumData(boolean unlikedAlbumsOnly) throws IOException, ParseException, SpotifyWebApiException {
+        List<SavedTrack> likedSongs = getTotalEntities(API.getUsersSavedTracks().build().execute().getTotal(), SpotifyApi::getUsersSavedTracks);
+
+        Map<AlbumSimplified, Number> albumSimplifiedNumberMap = new LinkedHashMap<>();
+
+        List<String> savedAlbumIds = getTotalEntities(API.getCurrentUsersSavedAlbums().build().execute().getTotal(), SpotifyApi::getCurrentUsersSavedAlbums)
+            .stream()
+            .map(SavedAlbum::getAlbum)
+            .map(Album::getId)
+            .toList();
+
+        likedSongs.forEach(savedTrack -> {
+            AlbumSimplified simplified = savedTrack.getTrack().getAlbum();
+
+            if (simplified.getAlbumType() != AlbumType.ALBUM) {
+                return;
+            }
+
+            if (unlikedAlbumsOnly && savedAlbumIds.contains(simplified.getId())) {
+                return;
+            }
+
+            if (!albumSimplifiedNumberMap.containsKey(simplified)) {
+                albumSimplifiedNumberMap.put(simplified, 1);
+            } else {
+                albumSimplifiedNumberMap.replace(simplified, albumSimplifiedNumberMap.get(simplified).intValue() + 1);
+            }
+        });
+
+        Map<AlbumSimplified, Number> albumSimplifiedFloatMap = new LinkedHashMap<>();
+
+        for (Map.Entry<AlbumSimplified, Number> entry : albumSimplifiedNumberMap.entrySet()) {
+            AlbumSimplified albumSimplified = entry.getKey();
+            Number number = entry.getValue();
+            albumSimplifiedFloatMap.put(albumSimplified, number.floatValue() / API.getAlbumsTracks(albumSimplified.getId()).build().execute().getTotal());
+        }
+
+        albumSimplifiedFloatMap = sortArtistMap(albumSimplifiedFloatMap);
+
+        albumSimplifiedFloatMap.forEach((albumSimplified, number) -> {
+            BigDecimal bigDecimal = BigDecimal.valueOf(100 * number.doubleValue()).round(new MathContext(3));
+            LOGGER.info(albumSimplified.getName() + " " + toString(albumSimplified.getArtists(), ArtistSimplified::getName) + " - " + bigDecimal + "%");
+        });
     }
 
     private static void createPlaylistForArtistAndProducer(String artist, String producer) throws IOException, ParseException, SpotifyWebApiException, InterruptedException {
@@ -611,7 +663,7 @@ public class Main {
     }
 
     public static void createPlaylistForArtist(boolean checkAll, String... artist) throws IOException, ParseException, SpotifyWebApiException, InterruptedException {
-        String playlistId = getAndDeleteSongsOrCreatePlaylist(String.join(", ", artist) + " Bangers");
+        String playlistId = getAndDeleteSongsOrCreatePlaylist(String.join(" and ", artist) + " Bangers");
 
         List<String> tracks = getTracksWithArtist(checkAll, artist);
 
