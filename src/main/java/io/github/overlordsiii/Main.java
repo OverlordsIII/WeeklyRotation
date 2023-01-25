@@ -278,6 +278,24 @@ public class Main {
             }
         }
 
+        Artist producerArtist = API.searchArtists(producer).build().execute().getItems()[0];
+
+        if (!producerArtist.getName().contains(producer)) {
+            return;
+        }
+
+        for (AlbumSimplified albumSimplified : getAllPagingItems(API.getArtistsAlbums(producerArtist.getId()))) {
+            if (!albumNames.contains(albumSimplified.getName())) {
+                albumNames.add(albumSimplified.getName());
+
+                getTotalEntities(API.getAlbumsTracks(albumSimplified.getId()).build().execute().getTotal(), spotifyApi -> spotifyApi.getAlbumsTracks(albumSimplified.getId())).forEach(trackSimplified -> {
+                    if (toString(trackSimplified.getArtists(), ArtistSimplified::getName).contains(artist)) {
+                        tracks.add(trackSimplified);
+                    }
+                });
+            }
+        }
+
         List<String> uris = tracks
             .stream()
             .map(trackSimplified -> "spotify:track:" + trackSimplified.getId())
