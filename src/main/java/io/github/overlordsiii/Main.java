@@ -28,6 +28,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import io.github.overlordsiii.config.PropertiesHandler;
 import io.github.overlordsiii.genius.GeniusRequests;
+import io.github.overlordsiii.util.RandomCollection;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.hc.core5.http.ParseException;
 import org.slf4j.Logger;
@@ -664,7 +665,15 @@ public class Main {
     private static void setPlayerToRandomAlbum() throws IOException, ParseException, SpotifyWebApiException {
         List<SavedAlbum> savedAlbums = getTotalEntities(API.getCurrentUsersSavedAlbums().build().execute().getTotal(), SpotifyApi::getCurrentUsersSavedAlbums);
 
-        SavedAlbum randomAlbum = savedAlbums.get(RANDOM.nextInt(savedAlbums.size()));
+        RandomCollection<SavedAlbum> albumRandomCollection = new RandomCollection<>();
+
+
+        for (int i = 0; i < savedAlbums.size(); i++) {
+            SavedAlbum savedAlbum = savedAlbums.get(i);
+            albumRandomCollection.add((i / (double) savedAlbums.size()), savedAlbum);
+        }
+
+        SavedAlbum randomAlbum = albumRandomCollection.next();
 
 
         List<String> tracks = Arrays.stream(randomAlbum.getAlbum().getTracks().getItems())
