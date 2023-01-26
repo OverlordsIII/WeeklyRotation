@@ -668,10 +668,7 @@ public class Main {
         RandomCollection<SavedAlbum> albumRandomCollection = new RandomCollection<>();
 
 
-        for (int i = 0; i < savedAlbums.size(); i++) {
-            SavedAlbum savedAlbum = savedAlbums.get(i);
-            albumRandomCollection.add((i / (double) savedAlbums.size()), savedAlbum);
-        }
+        savedAlbums.forEach(savedAlbum -> albumRandomCollection.add((1 / (double) savedAlbums.size()), savedAlbum));
 
         SavedAlbum randomAlbum = albumRandomCollection.next();
 
@@ -685,6 +682,11 @@ public class Main {
         }
 
         LOGGER.info(randomAlbum.getAlbum().getName() + " - " + toString(randomAlbum.getAlbum().getArtists(), ArtistSimplified::getName) + " added to queue");
+
+        LOGGER.info("Tracks: ");
+        for (TrackSimplified item : randomAlbum.getAlbum().getTracks().getItems()) {
+            LOGGER.info(item.getName() + " - " + toString(item.getArtists(), ArtistSimplified::getName));
+        }
 
 
     }
