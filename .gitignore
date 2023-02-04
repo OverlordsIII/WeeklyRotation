@@ -5,3 +5,5 @@
 /src/main/resources/ilse-bot.properties
 /src/main/resources/token.properties
 /src/main/resources/servers/*
+
+/src/main/java/io/github/overlordsiii/scrobbler/*
