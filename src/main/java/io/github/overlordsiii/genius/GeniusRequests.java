@@ -7,9 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import io.github.overlordsiii.Main;
 import io.github.overlordsiii.util.Method;
 import io.github.overlordsiii.util.Request;
 
@@ -23,19 +21,38 @@ public class GeniusRequests {
 
 	public static boolean isArtistOnSong(String song, String songArtist, String[] artist) throws IOException, InterruptedException {
 
+		String artsts = getArtistsOnSong(song, songArtist);
+
+		if (artsts == null) {
+			return false;
+		}
+
+		boolean bl = true;
+
+		for (String s : artist) {
+			if (!artsts.contains(s)) {
+				bl = false;
+				break;
+			}
+		}
+		return bl;
+	}
+
+	public static String getArtistsOnSong(String song, String songArtist) throws IOException, InterruptedException {
+
 		String encodedName = URLEncoder.encode(song + " " + songArtist, StandardCharsets.UTF_8);
 
 
 		JsonObject object = Request.makeRequest(BASE_SEARCH_STR + encodedName, Method.GET, null);
 		if (object == null) {
-			return false;
+			return null;
 		}
 
 		checkRequest(object);
 		JsonArray hitsArray = object.get("response").getAsJsonObject().getAsJsonArray("hits");
 
 		if (hitsArray.size() < 1) {
-			return false;
+			return null;
 		}
 		int index = 0;
 
@@ -55,15 +72,7 @@ public class GeniusRequests {
 			artists = result2.get("artist_names").getAsString();
 		}
 
-		boolean bl = true;
-
-		for (String s : artist) {
-			if (!artists.contains(s)) {
-				bl = false;
-				break;
-			}
-		}
-		return bl;
+		return artists;
 	}
 
 	public static boolean isProducerOnSong(String song, String songArtist, String producerName) throws IOException, InterruptedException {
