@@ -78,51 +78,7 @@ public class Main {
 
     // Use genius to get duo collabs
     public static void main(String[] args) throws IOException, ParseException, SpotifyWebApiException, InterruptedException {
-        URI REDIRECT_URL = SpotifyHttpManager.makeUri(PRIVATE_CONFIG.getConfigOptionNonNull("redirect-url"));
-
-        API = new SpotifyApi.Builder()
-                .setClientId(PRIVATE_CONFIG.getConfigOptionNonNull("client-id"))
-                .setClientSecret(PRIVATE_CONFIG.getConfigOptionNonNull("client-secret"))
-                .setRedirectUri(REDIRECT_URL)
-                .build();
-
-        if (!PRIVATE_CONFIG.hasConfigOption("auth-code")) {
-            AuthorizationCodeUriRequest credentials = API
-                    .authorizationCodeUri(PRIVATE_CONFIG.getConfigOptionNonNull("client-id"), REDIRECT_URL)
-                    .scope(AuthorizationScope.values())
-                    .build();
-
-            URI uri = credentials.execute();
-
-            LOGGER.info(uri.toString());
-
-            LOGGER.info("Use code retrieved from redirect for config and then rerun");
-            return;
-        }
-
-        if (!PRIVATE_CONFIG.hasConfigOption("access-token") || !PRIVATE_CONFIG.hasConfigOption("refresh-token")) {
-            AuthorizationCodeCredentials request = API.authorizationCode(PRIVATE_CONFIG.getConfigOptionNonNull("auth-code")).build().execute();
-
-            PRIVATE_CONFIG.setConfigOption("access-token", request.getAccessToken());
-            PRIVATE_CONFIG.setConfigOption("refresh-token", request.getRefreshToken());
-            PRIVATE_CONFIG.reload();
-        }
-
-        API.setRefreshToken(PRIVATE_CONFIG.getConfigOption("refresh-token"));
-        API.setAccessToken(PRIVATE_CONFIG.getConfigOption("access-token"));
-
-        try {
-            CURRENT_USER = API.getCurrentUsersProfile().build().execute();
-        } catch (UnauthorizedException e) {
-            AuthorizationCodeCredentials request = API.authorizationCodeRefresh().refresh_token(API.getRefreshToken()).build().execute();
-
-            PRIVATE_CONFIG.setConfigOption("access-token", request.getAccessToken());
-            PRIVATE_CONFIG.reload();
-
-            API.setAccessToken(PRIVATE_CONFIG.getConfigOption("access-token"));
-
-            CURRENT_USER = API.getCurrentUsersProfile().build().execute();
-        }
+        refreshAPI();
 
 
         LOGGER.info(CURRENT_USER.getId());
@@ -256,6 +212,54 @@ public class Main {
     private static List<String> getArtistsFromDesc(String desc) {
         String array = desc.substring(desc.indexOf("[") + 1, desc.indexOf("]"));
         return Arrays.asList(array.split(":"));
+    }
+
+    public static void refreshAPI() throws IOException, ParseException, SpotifyWebApiException {
+        URI REDIRECT_URL = SpotifyHttpManager.makeUri(PRIVATE_CONFIG.getConfigOptionNonNull("redirect-url"));
+
+        API = new SpotifyApi.Builder()
+            .setClientId(PRIVATE_CONFIG.getConfigOptionNonNull("client-id"))
+            .setClientSecret(PRIVATE_CONFIG.getConfigOptionNonNull("client-secret"))
+            .setRedirectUri(REDIRECT_URL)
+            .build();
+
+        if (!PRIVATE_CONFIG.hasConfigOption("auth-code")) {
+            AuthorizationCodeUriRequest credentials = API
+                .authorizationCodeUri(PRIVATE_CONFIG.getConfigOptionNonNull("client-id"), REDIRECT_URL)
+                .scope(AuthorizationScope.values())
+                .build();
+
+            URI uri = credentials.execute();
+
+            LOGGER.info(uri.toString());
+
+            LOGGER.info("Use code retrieved from redirect for config and then rerun");
+            return;
+        }
+
+        if (!PRIVATE_CONFIG.hasConfigOption("access-token") || !PRIVATE_CONFIG.hasConfigOption("refresh-token")) {
+            AuthorizationCodeCredentials request = API.authorizationCode(PRIVATE_CONFIG.getConfigOptionNonNull("auth-code")).build().execute();
+
+            PRIVATE_CONFIG.setConfigOption("access-token", request.getAccessToken());
+            PRIVATE_CONFIG.setConfigOption("refresh-token", request.getRefreshToken());
+            PRIVATE_CONFIG.reload();
+        }
+
+        API.setRefreshToken(PRIVATE_CONFIG.getConfigOption("refresh-token"));
+        API.setAccessToken(PRIVATE_CONFIG.getConfigOption("access-token"));
+
+        try {
+            CURRENT_USER = API.getCurrentUsersProfile().build().execute();
+        } catch (UnauthorizedException e) {
+            AuthorizationCodeCredentials request = API.authorizationCodeRefresh().refresh_token(API.getRefreshToken()).build().execute();
+
+            PRIVATE_CONFIG.setConfigOption("access-token", request.getAccessToken());
+            PRIVATE_CONFIG.reload();
+
+            API.setAccessToken(PRIVATE_CONFIG.getConfigOption("access-token"));
+
+            CURRENT_USER = API.getCurrentUsersProfile().build().execute();
+        }
     }
 
     private static void outputLikedSongsAlbumData(boolean unlikedAlbumsOnly) throws IOException, ParseException, SpotifyWebApiException {
