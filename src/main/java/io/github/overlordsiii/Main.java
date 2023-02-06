@@ -200,7 +200,7 @@ public class Main {
 
             addTracksToPlaylist(playlistId, tracks
                     .stream()
-                    .map(Track::getId)
+                    .map(track -> "spotify:track:" + track.getId())
                     .toList());
 
             uploadImageToPlaylist(playlistId, getBiggestImage(artist.getImages()));
