@@ -179,8 +179,11 @@ public class PrepareScrobbleData {
 				array.forEach(jsonElement -> {
 					JsonObject obj = jsonElement.getAsJsonObject();
 					if (obj.has("msPlayed")) {
-						integer.addAndGet(obj.get("msPlayed").getAsInt());
-						count.addAndGet(1);
+						if (obj.get("msPlayed").getAsInt() > 25000) {
+
+							integer.addAndGet(obj.get("msPlayed").getAsInt());
+							count.addAndGet(1);
+						}
 					}
 				});
 			});
