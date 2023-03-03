@@ -6,7 +6,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import io.github.overlordsiii.config.PropertiesHandler;
 import io.github.overlordsiii.genius.GeniusRequests;
-import io.github.overlordsiii.util.RandomCollection;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.hc.core5.http.ParseException;
 import org.slf4j.Logger;
@@ -461,7 +460,11 @@ public class Main {
 
         String imageString = Base64.encodeBase64String(data);
 
-        API.uploadCustomPlaylistCoverImage(playlistId).image_data(imageString).build().execute();
+        try {
+            API.uploadCustomPlaylistCoverImage(playlistId).image_data(imageString).build().execute();
+        } catch (Exception e) {
+            LOGGER.error("Error while uploading image for playlist with id: " + playlistId, e);
+        }
     }
 
     private static void createPlaylistOfReccomendationsBasedOnAlbum(String albumName, String genreName) throws IOException, ParseException, SpotifyWebApiException {
@@ -694,12 +697,7 @@ public class Main {
     private static void setPlayerToRandomAlbum() throws IOException, ParseException, SpotifyWebApiException {
         List<SavedAlbum> savedAlbums = getTotalEntities(API.getCurrentUsersSavedAlbums().build().execute().getTotal(), SpotifyApi::getCurrentUsersSavedAlbums);
 
-        RandomCollection<SavedAlbum> albumRandomCollection = new RandomCollection<>();
-
-
-        savedAlbums.forEach(savedAlbum -> albumRandomCollection.add((1 / (double) savedAlbums.size()), savedAlbum));
-
-        SavedAlbum randomAlbum = albumRandomCollection.next();
+        SavedAlbum randomAlbum = savedAlbums.get(RANDOM.nextInt(savedAlbums.size()));
 
 
         List<String> tracks = Arrays.stream(randomAlbum.getAlbum().getTracks().getItems())

@@ -1,8 +1,6 @@
 package io.github.overlordsiii.scrobbler;
 
 import java.io.IOException;
-import java.math.BigDecimal;
-import java.math.MathContext;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -268,12 +266,7 @@ public class PrepareScrobbleData {
 							int ms = jsonObject.get("duration").getAsInt();
 							jsonObject.remove("duration");
 
-							int hours = new BigDecimal(ms / 3600000).round(new MathContext(3)).intValue();
-							int minutes = new BigDecimal((ms % 3600000) / 60000).round(new MathContext(3)).intValue();
-							int seconds = new BigDecimal(((ms % 3600000) % 60000) / 1000).round(new MathContext(3)).intValue();
-							int newMs = ((ms % 3600000) % 60000) % 1000;
-							String finalDuration = hours + ":" + minutes + ":" + seconds + "." + newMs;
-							jsonObject.addProperty("duration", finalDuration);
+							jsonObject.addProperty("duration", PrepareNewScrobbleData.convertMsToTimeFormat(ms));
 						}
 						newObjects.add(jsonObject);
 					});
