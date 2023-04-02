@@ -93,7 +93,9 @@ public class Main {
             case 2 -> {
                 LOGGER.info("Input artist name");
                 String name = scanner.nextLine();
-                createPlaylistForArtist(false, name);
+                LOGGER.info("Bypass genius?");
+                boolean bypass = scanner.nextBoolean();
+                createPlaylistForArtist(false, bypass, name);
             }
             case 3 -> setPlayerToRandomAlbum();
             case 4 -> outputLikedSongsData();
@@ -130,7 +132,9 @@ public class Main {
                 String artist1 = scanner.nextLine();
                 LOGGER.info("Input artist 2");
                 String artist2 = scanner.nextLine();
-                createPlaylistForArtist(true, artist1, artist2);
+                LOGGER.info("Bypass Genius?");
+                boolean bypass = scanner.nextBoolean();
+                createPlaylistForArtist(true, bypass, artist1, artist2);
             }
             // create playlist with artist + producer
             case 12 -> {
@@ -146,8 +150,85 @@ public class Main {
                 outputLikedSongsAlbumData(bool);
             }
             case 14 -> refreshPlaylists();
+            case 15 -> outputSongsFromLikedAlbums();
+            case 16 -> outputSavedSongsWithoutVowels();
+            case 17 -> outputPopularitySongs();
             default -> LOGGER.error("Incorrect Input!");
         }
+    }
+
+    private static void outputPopularitySongs() throws IOException, ParseException, SpotifyWebApiException {
+        List<SavedTrack> likedSongs = getTotalEntities(API.getUsersSavedTracks().build().execute().getTotal(), SpotifyApi::getUsersSavedTracks);
+
+        Map<Track, Number> map = new LinkedHashMap<>();
+
+        for (SavedTrack savedTrack : likedSongs) {
+            map.put(savedTrack.getTrack(), savedTrack.getTrack().getPopularity());
+        }
+
+        map = sortArtistMap(map);
+
+        map.forEach((track, number) -> {
+            LOGGER.info(track.getName() + " " + toString(track.getArtists(), ArtistSimplified::getName) + " (" + number + ")");
+        });
+
+    }
+
+    private static void outputSavedSongsWithoutVowels() throws IOException, ParseException, SpotifyWebApiException {
+        List<SavedTrack> likedSongs = getTotalEntities(API.getUsersSavedTracks().build().execute().getTotal(), SpotifyApi::getUsersSavedTracks);
+
+        List<SavedTrack> songs = new ArrayList<>();
+
+        likedSongs.forEach(savedTrack -> {
+            boolean add = true;
+            for (char c : savedTrack.getTrack().getName().toCharArray()) {
+                c = Character.toLowerCase(c);
+                if (c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u') {
+                    add = false;
+                    break;
+                }
+            }
+
+            if (add) {
+                songs.add(savedTrack);
+            }
+        });
+
+        songs.forEach(savedTrack -> {
+            LOGGER.info(savedTrack.getTrack().getName() + " " + toString(savedTrack.getTrack().getArtists(), ArtistSimplified::getName));
+        });
+    }
+
+    private static void outputSongsFromLikedAlbums() throws IOException, ParseException, SpotifyWebApiException {
+        List<SavedAlbum> savedAlbums = getTotalEntities(API.getCurrentUsersSavedAlbums().build().execute().getTotal(), SpotifyApi::getCurrentUsersSavedAlbums);
+
+        List<String> songIdMap = savedAlbums
+            .stream()
+            .flatMap(savedAlbum -> {
+                LOGGER.info("Processing: " + savedAlbum.getAlbum().getName() + " " + toString(savedAlbum.getAlbum().getArtists(), ArtistSimplified::getName));
+                try {
+                    return Arrays.stream(API.getAlbumsTracks(savedAlbum.getAlbum().getId()).build().execute().getItems()).map(TrackSimplified::getId);
+                } catch (IOException | SpotifyWebApiException | ParseException e) {
+                    throw new RuntimeException(e);
+                }
+            }).toList();
+
+        List<String> likedSongIdMap = getTotalEntities(API.getUsersSavedTracks().build().execute().getTotal(), SpotifyApi::getUsersSavedTracks).stream().map(savedTrack -> savedTrack.getTrack().getId()).toList();
+
+        int partOfSavedAlbums = 0;
+
+        for (String s : likedSongIdMap) {
+            if (songIdMap.contains(s)) {
+                partOfSavedAlbums++;
+            }
+        }
+
+        int notPartOfSavedAlbum = likedSongIdMap.size() - partOfSavedAlbums;
+
+        LOGGER.info("Liked Songs that are part of Saved Albums: " + partOfSavedAlbums + " (" +  100*((partOfSavedAlbums*1.0) / likedSongIdMap.size()) + "%)");
+        LOGGER.info("Liked Songs that are not part of Saved Albums: " + notPartOfSavedAlbum + " (" +  100*((notPartOfSavedAlbum*1.0) / likedSongIdMap.size()) + "%)");
+
+
     }
 
     private static void refreshPlaylists() throws IOException, ParseException, SpotifyWebApiException, InterruptedException {
@@ -159,7 +240,7 @@ public class Main {
             String desc = API.getPlaylist(playlist.getId()).build().execute().getDescription();
 
             if (desc.startsWith("duo-playlist")) {
-                createPlaylistForArtist(true, getArtistsFromDesc(desc).toArray(String[]::new));
+                createPlaylistForArtist(true, false, getArtistsFromDesc(desc).toArray(String[]::new));
             } else if (desc.startsWith("producer-playlist")) {
                 List<String> producerArt = getArtistsFromDesc(desc);
                 createPlaylistForArtistAndProducer(producerArt.get(0), producerArt.get(1));
@@ -718,10 +799,10 @@ public class Main {
 
     }
 
-    public static void createPlaylistForArtist(boolean checkAll, String... artist) throws IOException, ParseException, SpotifyWebApiException, InterruptedException {
+    public static void createPlaylistForArtist(boolean checkAll, boolean bypass, String... artist) throws IOException, ParseException, SpotifyWebApiException, InterruptedException {
         String playlistId = getAndDeleteSongsOrCreatePlaylist(String.join(" and ", artist) + " Bangers");
 
-        List<String> tracks = getTracksWithArtist(checkAll, artist);
+        List<String> tracks = getTracksWithArtist(checkAll, bypass, artist);
 
         List<String> uris = tracks
                 .stream()
@@ -771,7 +852,7 @@ public class Main {
         return playlistId;
     }
 
-    private static List<String> getTracksWithArtist(boolean checkAll, String... artist) throws IOException, ParseException, SpotifyWebApiException, InterruptedException {
+    private static List<String> getTracksWithArtist(boolean checkAll, boolean bypass, String... artist) throws IOException, ParseException, SpotifyWebApiException, InterruptedException {
         List<AbstractModelObject> likedSongs;
 
         List<String> artistSongs = new ArrayList<>();
@@ -809,8 +890,10 @@ public class Main {
 
         for (AbstractModelObject savedTrack : likedSongs) {
             if (savedTrack instanceof Track track) {
-                if (GeniusRequests.isArtistOnSong(track.getName(), track.getArtists()[0].getName(), artist)) {
-                    artistSongs.add(track.getId());
+                if (!bypass) {
+                    if (GeniusRequests.isArtistOnSong(track.getName(), track.getArtists()[0].getName(), artist)) {
+                        artistSongs.add(track.getId());
+                    }
                 }
 
                 String artists = toString(track.getArtists(), ArtistSimplified::getName);
@@ -825,8 +908,10 @@ public class Main {
                     artistSongs.add(track.getId());
                 }
             } else if (savedTrack instanceof TrackSimplified trackSimplified) {
-                if (GeniusRequests.isArtistOnSong(trackSimplified.getName(), trackSimplified.getArtists()[0].getName(), artist)) {
-                    artistSongs.add(trackSimplified.getId());
+                if (!bypass) {
+                    if (GeniusRequests.isArtistOnSong(trackSimplified.getName(), trackSimplified.getArtists()[0].getName(), artist)) {
+                        artistSongs.add(trackSimplified.getId());
+                    }
                 }
 
                 String artists = toString(trackSimplified.getArtists(), ArtistSimplified::getName);
