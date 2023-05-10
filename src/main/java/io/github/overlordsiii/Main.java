@@ -6,6 +6,8 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import io.github.overlordsiii.config.PropertiesHandler;
 import io.github.overlordsiii.genius.GeniusRequests;
+import io.github.overlordsiii.ranking.RankedObject;
+import io.github.overlordsiii.ranking.RankingProgram;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.hc.core5.http.ParseException;
 import org.slf4j.Logger;
@@ -153,8 +155,58 @@ public class Main {
             case 15 -> outputSongsFromLikedAlbums();
             case 16 -> outputSavedSongsWithoutVowels();
             case 17 -> outputPopularitySongs();
+            case 18 -> {
+                LOGGER.info("Input an artist to rank");
+                String artist = scanner.nextLine();
+                rankArtistSongs(artist);
+            }
+            case 19 -> {
+                LOGGER.info("Input an album to rank");
+                String album = scanner.nextLine();
+                rankAlbumSongs(album);
+            }
+            case 20 -> rankUserAlbums();
             default -> LOGGER.error("Incorrect Input!");
         }
+    }
+
+    private static void rankUserAlbums() throws IOException, ParseException, SpotifyWebApiException {
+        List<RankedObject<Album>> albums = getTotalEntities(API.getCurrentUsersSavedAlbums().build().execute().getTotal(), SpotifyApi::getCurrentUsersSavedAlbums)
+                .stream()
+                .map(savedAlbum -> new RankedObject<>(savedAlbum.getAlbum(), savedAlbum.getAlbum().getName()))
+                .toList();
+
+        RankingProgram.rank(albums);
+
+
+    }
+
+    private static void rankAlbumSongs(String album) throws IOException, ParseException, SpotifyWebApiException {
+        String albumId = API.searchAlbumsSpecial(album).build().execute().getItems()[0].getId();
+
+        List<RankedObject<TrackSimplified>> tracks = new ArrayList<>();
+        for (TrackSimplified item : API.getAlbumsTracks(albumId).build().execute().getItems()) {
+            LOGGER.info("Processing Track: " + item.getName());
+            tracks.add(new RankedObject<>(item, item.getName()));
+        }
+
+        RankingProgram.rank(tracks);
+    }
+
+    private static void rankArtistSongs(String artistStr) throws IOException, ParseException, SpotifyWebApiException {
+        String artistId = API.searchArtists(artistStr).build().execute().getItems()[0].getId();
+
+        List<RankedObject<TrackSimplified>> tracks = new ArrayList<>();
+
+        for (AlbumSimplified allPagingItem : getAllPagingItems(API.getArtistsAlbums(artistId))) {
+            LOGGER.info("Processing Album: " + allPagingItem.getName());
+            for (TrackSimplified item : API.getAlbumsTracks(allPagingItem.getId()).build().execute().getItems()) {
+                LOGGER.info("Processing Track: " + item.getName());
+                tracks.add(new RankedObject<>(item, item.getName()));
+            }
+        }
+
+        RankingProgram.rank(tracks);
     }
 
     private static void outputPopularitySongs() throws IOException, ParseException, SpotifyWebApiException {

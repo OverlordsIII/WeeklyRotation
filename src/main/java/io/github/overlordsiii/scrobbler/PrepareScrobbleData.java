@@ -266,7 +266,7 @@ public class PrepareScrobbleData {
 							int ms = jsonObject.get("duration").getAsInt();
 							jsonObject.remove("duration");
 
-							jsonObject.addProperty("duration", PrepareNewScrobbleData.convertMsToTimeFormat(ms));
+			//				jsonObject.addProperty("duration", PrepareNewScrobbleData.convertMsToTimeFormat(ms));
 						}
 						newObjects.add(jsonObject);
 					});
