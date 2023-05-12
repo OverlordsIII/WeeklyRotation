@@ -10,26 +10,48 @@ public class RankingProgram {
     public static <T> void rank(List<RankedObject<T>> list) {
         Scanner scanner = new Scanner(System.in);
 
-        while (!areDistinctPrioritiesInList(list)) {
-            List<Pair<RankedObject<T>>> pairs = splitIntoPairs(list);
-
-
-            for (Pair<RankedObject<T>> pair : pairs) {
-                LOGGER.info("Choose 1 or 2 between there two:");
-                LOGGER.info(pair.getO1().getName());
-                LOGGER.info(pair.getO2().getName());
-                int i = scanner.nextInt();
-                if (i == 1) {
-                    pair.getO1().incrementPriority();
-                } else if (i == 2) {
-                    pair.getO2().incrementPriority();
-                } else {
-                    throw new IllegalArgumentException("Wrong input! Must choose 1 or 2!");
+        for (int i = 0; i < list.size(); i++) {
+            for (int j = i+1; j < list.size(); j++) {
+                RankedObject<T> s1 = list.get(i);
+                RankedObject<T> s2 = list.get(j);
+                LOGGER.info("What song is better?");
+                LOGGER.info("1: " + s1.getName());
+                LOGGER.info("2: " + s2.getName());
+                int choice = scanner.nextInt();
+                if (choice == 1) {
+                    list.get(i).incrementPriority();
+                    list.get(j).decrementPriority();
+                } else if (choice == 2) {
+                    list.get(i).decrementPriority();
+                    list.get(j).decrementPriority();
                 }
             }
-            list = decompressPairs(pairs);
-            sortListByPriority(list);
         }
+
+        list.sort((s1, s2) -> {
+            int scoreDiff = s2.getPriority() - s1.getPriority();
+            if (scoreDiff != 0) {
+                return scoreDiff;
+            } else {
+                // If the scores are equal, ask the user to break the tie
+                LOGGER.info("There is a tie between " + s1 + " and " + s2 + ". Please choose one:");
+                LOGGER.info("1. " + s1.getName());
+                LOGGER.info("2. " + s2.getName());
+                int choice = scanner.nextInt();
+                if (choice == 1) {
+                    return -1;
+                } else if (choice == 2) {
+                    return 1;
+                } else {
+                    // If the user enters an invalid choice, treat it as a tie
+                    return 0;
+                }
+            }
+        });
+        for (int i = 0; i < list.size(); i++) {
+            LOGGER.info((i+1) + ": " + list.get(i).getName());
+        }
+
     }
 
     private static <T> boolean areDistinctPrioritiesInList(List<RankedObject<T>> list) {
@@ -48,7 +70,7 @@ public class RankingProgram {
     private static <T> void sortListByPriority(List<RankedObject<T>> list) {
         list.sort(Comparator.comparingInt(RankedObject::getPriority));
     }
-
+/*
     private static <T> List<T> decompressPairs(List<Pair<T>> pairs) {
         List<T> list = new ArrayList<>();
         pairs.forEach(pair -> {
@@ -63,12 +85,14 @@ public class RankingProgram {
     private static <T> List<Pair<RankedObject<T>>> splitIntoPairs(List<RankedObject<T>> list) {
         List<Pair<RankedObject<T>>> newList = new ArrayList<>();
 
-        for (int i = 0; i < list.size() - 1; i++) {
-            newList.add(new Pair<>(list.get(i), list.get(i + 1)));
+        for (int i = 0; i < list.size() - 1; i += 2) {
+             newList.add(new Pair<>(list.get(i), list.get(i + 1)));
         }
 
         return newList;
     }
+
+ */
 
 
 }

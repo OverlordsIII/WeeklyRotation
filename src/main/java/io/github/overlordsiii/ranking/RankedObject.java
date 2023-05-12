@@ -17,6 +17,10 @@ public class RankedObject<T> {
         priority++;
     }
 
+    public void decrementPriority() {
+        priority--;
+    }
+
     public T getObject() {
         return object;
     }
@@ -27,5 +31,10 @@ public class RankedObject<T> {
 
     public int getPriority() {
         return priority;
+    }
+
+    @Override
+    public String toString() {
+        return name;
     }
 }
