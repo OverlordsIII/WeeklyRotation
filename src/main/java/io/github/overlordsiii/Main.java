@@ -166,15 +166,87 @@ public class Main {
                 rankAlbumSongs(album);
             }
             case 20 -> rankUserAlbums();
+            case 21 -> createFavSongsByArtistsPlaylist();
+            case 22 -> outputRandomAlbums();
+            case 23 -> {
+                LOGGER.info("Input Genre");
+                String genre = scanner.nextLine();
+                getAlbumsByGenre(genre);
+            }
+
             default -> LOGGER.error("Incorrect Input!");
         }
     }
 
+    private static void getAlbumsByGenre(String genre) throws IOException, ParseException, SpotifyWebApiException {
+        List<SavedAlbum> savedAlbums = getTotalEntities(API.getCurrentUsersSavedAlbums().build().execute().getTotal(), SpotifyApi::getCurrentUsersSavedAlbums);
+
+        LOGGER.info("# of Albums: " + savedAlbums.size());
+
+        List<String> console = new ArrayList<>();
+
+        for (SavedAlbum savedAlbum : savedAlbums) {
+            Album album = savedAlbum.getAlbum();
+            StringBuilder builder = new StringBuilder();
+
+            for (ArtistSimplified artist : album.getArtists()) {
+                LOGGER.info("Artist: " + artist.getName());
+                builder.append(Arrays.toString(API.getArtist(artist.getId()).build().execute().getGenres()));
+            }
+
+            String genres = builder.toString();
+
+            if (genres.toLowerCase().contains(genre.toLowerCase())) {
+
+                console.add(album.getName() + " - " + toString(album.getArtists(), ArtistSimplified::getName));
+            }
+        }
+
+        console.forEach(LOGGER::info);
+
+    }
+
+    private static void outputRandomAlbums() throws IOException, ParseException, SpotifyWebApiException {
+        List<SavedAlbum> savedAlbums = getTotalEntities(API.getCurrentUsersSavedAlbums().build().execute().getTotal(), SpotifyApi::getCurrentUsersSavedAlbums);
+
+        LOGGER.info("# of Albums: " + savedAlbums.size());
+
+        for (int i = 0; i < 5; i++) {
+            Album album = savedAlbums.get(RANDOM.nextInt(savedAlbums.size())).getAlbum();
+            LOGGER.info(Arrays.toString(album.getGenres()));
+            LOGGER.info(album.getName() + " - " + toString(album.getArtists(), ArtistSimplified::getName));
+        }
+
+
+
+    }
+
+    private static void createFavSongsByArtistsPlaylist() throws IOException, ParseException, SpotifyWebApiException {
+        List<Artist> artists = getTotalEntities(API.getUsersTopArtists().build().execute().getTotal(), SpotifyApi::getUsersTopArtists);
+
+        String playlistId = getAndDeleteSongsOrCreatePlaylist("LeArtistADay");
+
+        List<Track> tracks = new ArrayList<>();
+        Scanner scanner = new Scanner(System.in);
+        for (Artist artist : artists) {
+            LOGGER.info("Artist: " + artist.getName());
+            LOGGER.info("Choose a song by artist: ");
+            String songName = scanner.nextLine();
+
+            tracks.add(API.searchTracks(songName + " " + artist.getName()).build().execute().getItems()[0]);
+        }
+
+        addTracksToPlaylist(playlistId, tracks
+            .stream()
+            .map(track -> "spotify:track:" + track.getId())
+            .toList());
+    }
+
     private static void rankUserAlbums() throws IOException, ParseException, SpotifyWebApiException {
-        List<RankedObject<Album>> albums = getTotalEntities(API.getCurrentUsersSavedAlbums().build().execute().getTotal(), SpotifyApi::getCurrentUsersSavedAlbums)
+        List<RankedObject<Album>> albums = new ArrayList<>(getTotalEntities(API.getCurrentUsersSavedAlbums().build().execute().getTotal(), SpotifyApi::getCurrentUsersSavedAlbums)
                 .stream()
                 .map(savedAlbum -> new RankedObject<>(savedAlbum.getAlbum(), savedAlbum.getAlbum().getName()))
-                .toList();
+                .toList());
 
         RankingProgram.rank(albums);
 
@@ -197,8 +269,12 @@ public class Main {
         String artistId = API.searchArtists(artistStr).build().execute().getItems()[0].getId();
 
         List<RankedObject<TrackSimplified>> tracks = new ArrayList<>();
-
-        for (AlbumSimplified allPagingItem : getAllPagingItems(API.getArtistsAlbums(artistId))) {
+        List<AlbumSimplified> list = getAllPagingItems(API.getArtistsAlbums(artistId))
+            .stream()
+            .distinct()
+            .filter(albumSimplified -> albumSimplified.getArtists()[0].getId().equals(artistId))
+            .toList();
+        for (AlbumSimplified allPagingItem : list) {
             LOGGER.info("Processing Album: " + allPagingItem.getName());
             for (TrackSimplified item : API.getAlbumsTracks(allPagingItem.getId()).build().execute().getItems()) {
                 LOGGER.info("Processing Track: " + item.getName());
@@ -227,7 +303,7 @@ public class Main {
     }
 
     private static void outputSavedSongsWithoutVowels() throws IOException, ParseException, SpotifyWebApiException {
-        List<SavedTrack> likedSongs = getTotalEntities(API.getUsersSavedTracks().build().execute().getTotal(), SpotifyApi::getUsersSavedTracks);
+        List<SavedTrack> likedSongs = getTotalEntities(API.getUsersSavedTracks().build().execute().getTotal(), SpotifyApi::getUsersSavedTracks).stream().distinct().toList();
 
         List<SavedTrack> songs = new ArrayList<>();
 
@@ -758,7 +834,6 @@ public class Main {
 
     private static void addTracksToPlaylist(String playlistId, List<String> uris) throws IOException, SpotifyWebApiException, ParseException {
         List<List<String>> moreUris = subListX(uris, 50);
-
         for (List<String> strings : moreUris) {
             String[] uri = strings.toArray(String[]::new);
             API.addItemsToPlaylist(playlistId, uri).build().execute();
@@ -830,6 +905,8 @@ public class Main {
     private static void setPlayerToRandomAlbum() throws IOException, ParseException, SpotifyWebApiException {
         List<SavedAlbum> savedAlbums = getTotalEntities(API.getCurrentUsersSavedAlbums().build().execute().getTotal(), SpotifyApi::getCurrentUsersSavedAlbums);
 
+        LOGGER.info("# Of Albums: " + savedAlbums.size());
+
         SavedAlbum randomAlbum = savedAlbums.get(RANDOM.nextInt(savedAlbums.size()));
 
 
@@ -864,14 +941,19 @@ public class Main {
         addTracksToPlaylist(playlistId, uris);
 
         Image image;
-        if (artist.length == 1) {
-            image = getBiggestImage(API.searchArtists(artist[0]).build().execute().getItems()[0].getImages());
-        } else {
-            image = getBiggestImage(API.getTrack(tracks.get(RANDOM.nextInt(tracks.size()))).build().execute().getAlbum().getImages());
-        }
 
-        if (API.getPlaylist(playlistId).build().execute().getImages().length != 1 || artist.length != 1) {
-            uploadImageToPlaylist(playlistId, image);
+        try {
+            if (artist.length == 1) {
+                image = getBiggestImage(API.searchArtists(artist[0]).build().execute().getItems()[0].getImages());
+            } else {
+                image = getBiggestImage(API.getTrack(tracks.get(RANDOM.nextInt(tracks.size()))).build().execute().getAlbum().getImages());
+            }
+
+            if (API.getPlaylist(playlistId).build().execute().getImages().length != 1 || artist.length != 1) {
+                uploadImageToPlaylist(playlistId, image);
+            }
+        } catch (Exception e) {
+            LOGGER.error("Error getting biggest image", e);
         }
 
         API.changePlaylistsDetails(playlistId).description((checkAll ? "duo-" : "single-") + "playlist: [" + String.join(":", artist) + "]").build().execute();

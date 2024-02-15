@@ -17,8 +17,16 @@ public class RankedObject<T> {
         priority++;
     }
 
+    public void incrementPriority(int priority) {
+        this.priority += priority;
+    }
+
     public void decrementPriority() {
         priority--;
+    }
+
+    public void decrementPriority(int priority) {
+        this.priority -= priority;
     }
 
     public T getObject() {

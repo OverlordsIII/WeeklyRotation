@@ -9,6 +9,8 @@ public class RankingProgram {
     // TODO output ranked list of objects for further user use (like creating playlist)
     public static <T> void rank(List<RankedObject<T>> list) {
         Scanner scanner = new Scanner(System.in);
+        int numQuestions = list.size() - 1;
+        Collections.shuffle(list);
 
         for (int i = 0; i < list.size(); i++) {
             for (int j = i+1; j < list.size(); j++) {
@@ -19,11 +21,11 @@ public class RankingProgram {
                 LOGGER.info("2: " + s2.getName());
                 int choice = scanner.nextInt();
                 if (choice == 1) {
-                    list.get(i).incrementPriority();
-                    list.get(j).decrementPriority();
+                    list.get(i).incrementPriority(numQuestions - j + i);
+                    list.get(j).decrementPriority(numQuestions - j + i);
                 } else if (choice == 2) {
-                    list.get(i).decrementPriority();
-                    list.get(j).decrementPriority();
+                    list.get(i).decrementPriority(numQuestions - j + i);
+                    list.get(j).incrementPriority(numQuestions - j + i);
                 }
             }
         }
@@ -51,7 +53,6 @@ public class RankingProgram {
         for (int i = 0; i < list.size(); i++) {
             LOGGER.info((i+1) + ": " + list.get(i).getName());
         }
-
     }
 
     private static <T> boolean areDistinctPrioritiesInList(List<RankedObject<T>> list) {
