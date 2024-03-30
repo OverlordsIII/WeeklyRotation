@@ -213,7 +213,6 @@ public class Main {
 
         for (int i = 0; i < 5; i++) {
             Album album = savedAlbums.get(RANDOM.nextInt(savedAlbums.size())).getAlbum();
-            LOGGER.info(Arrays.toString(album.getGenres()));
             LOGGER.info(album.getName() + " - " + toString(album.getArtists(), ArtistSimplified::getName));
         }
 
